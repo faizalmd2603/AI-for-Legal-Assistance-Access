@@ -33,13 +33,21 @@ export function App() {
 
   // AI settings
   const [settings, setSettings] = useState<AISettings>(() => {
+    const directKey = typeof window !== 'undefined' ? localStorage.getItem('clarifylex_gemini_key') || '' : '';
     try {
       const saved = localStorage.getItem(SETTINGS_STORAGE_KEY);
-      if (saved) return { ...DEFAULT_SETTINGS, ...JSON.parse(saved) };
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return {
+          ...DEFAULT_SETTINGS,
+          ...parsed,
+          geminiApiKey: parsed.geminiApiKey || directKey
+        };
+      }
     } catch (e) {
       console.warn('Failed to parse saved settings:', e);
     }
-    return DEFAULT_SETTINGS;
+    return { ...DEFAULT_SETTINGS, geminiApiKey: directKey };
   });
 
   // Server credentials status
@@ -57,15 +65,19 @@ export function App() {
     checkServerConfig().then((cfg) => {
       setServerConfig(cfg);
     });
-  }, []);
+  }, [settings.geminiApiKey]);
 
   const handleSaveSettings = (newSettings: AISettings) => {
     setSettings(newSettings);
     try {
       localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(newSettings));
+      if (newSettings.geminiApiKey) {
+        localStorage.setItem('clarifylex_gemini_key', newSettings.geminiApiKey.trim());
+      }
     } catch (e) {
       console.warn('Failed to persist settings:', e);
     }
+    checkServerConfig().then((cfg) => setServerConfig(cfg));
   };
 
   return (

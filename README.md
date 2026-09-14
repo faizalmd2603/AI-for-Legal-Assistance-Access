@@ -204,18 +204,24 @@ npm run start
 
 ## ☁️ Deploy to Vercel
 
-You can deploy ClarifyLex AI to Vercel with zero configuration:
+ClarifyLex AI is fully configured for turnkey Vercel deployment with hybrid architecture support (Serverless API + Direct Client Fallback):
 
 [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/your-username/clarifylex-ai&env=GEMINI_API_KEY)
 
-### Manual Vercel Deployment:
+### Two Ways to Configure Gemini on Vercel:
+
+#### Option A: Serverless Environment Variable (Recommended)
 1. Fork or push this repository to GitHub.
-2. Sign in to [Vercel](https://vercel.com/) and click **Add New Project**.
-3. Import your ClarifyLex AI repository.
-4. Set the **Framework Preset** to `Vite`.
-5. Under **Environment Variables**, add:
-   - `GEMINI_API_KEY`: Your Google AI Studio API key.
-6. Click **Deploy**.
+2. In your [Vercel Dashboard](https://vercel.com/), go to **Project Settings → Environment Variables**.
+3. Add:
+   - `GEMINI_API_KEY`: Your Google AI Studio API key (`AIzaSy...`).
+4. Re-deploy. The included `vercel.json` and `/api/index.ts` will route analysis requests to the serverless backend.
+
+#### Option B: Direct Client-Side Key / Zero-Configuration
+- If deployed without server environment variables, ClarifyLex AI automatically engages its **Direct Client-Side Gemini Engine**:
+  - Users can enter their Gemini API key directly into the UI (in the **Settings Modal** or in the **In-App API Key Banner**).
+  - The key is saved locally in browser `localStorage` and executes direct multimodal PDF OCR and statutory risk analysis via Google Gemini REST endpoints.
+  - Or users can set `VITE_GEMINI_API_KEY` in Vercel to pre-configure it for all users without serverless backend costs.
 
 For single-command CLI deployment:
 ```bash

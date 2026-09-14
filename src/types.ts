@@ -139,6 +139,8 @@ export interface DocumentAnalysisResult {
   obligations: ActionObligation[];
   lawyerDossier: LawyerDossier;
   analyzedAt: string;
+  extractedDocumentText?: string;
+  isHeuristicFallback?: boolean;
 }
 
 export interface DiffClauseChange {

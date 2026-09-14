@@ -4,6 +4,7 @@
  */
 
 import { LegalDocumentType, DocumentTypeDetails } from '../types';
+import * as pdfjsLib from 'pdfjs-dist';
 
 export interface ExtractedDocument {
   filename: string;
@@ -13,6 +14,77 @@ export interface ExtractedDocument {
   fileSizeBytes: number;
   detectedType?: LegalDocumentType;
   detectedSubtype?: string;
+  pdfBase64?: string;
+  isScannedPdf?: boolean;
+}
+
+/**
+ * Detects if a string contains raw PDF binary bytecode, markers, or font encoding tables
+ * so that raw binary data is NEVER passed to the document viewer, AI analyzer, or speech TTS.
+ */
+export function isPdfBytecode(text: string): boolean {
+  if (!text) return false;
+  return (
+    /%PDF-\d\.\d/i.test(text) ||
+    /\b(?:endobj|endstream|xref|trailer|startxref)\b/i.test(text) ||
+    /\/(?:Type|Page|CropBox|MediaBox|Rotate|Resources|XObject|Contents|ArtBox|Parent|BitsPerComponent|ColorSpace|DecodeParms|Filter|DCTDecode|FlateDecode|Font|ImageName)\b/i.test(text) ||
+    /<<\s*\/[A-Z0-9]/i.test(text)
+  );
+}
+
+/**
+ * Convert ArrayBuffer to Base64 safely
+ */
+export function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  let binary = '';
+  const bytes = new Uint8Array(buffer);
+  const len = bytes.byteLength;
+  for (let i = 0; i < len; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+}
+
+/**
+ * Robust in-browser PDF text extractor using pdfjs-dist
+ */
+export async function extractPdfTextWithPdfJs(arrayBuffer: ArrayBuffer): Promise<string> {
+  try {
+    if (typeof window !== 'undefined' && !pdfjsLib.GlobalWorkerOptions.workerSrc) {
+      pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version || '6.3.289'}/build/pdf.worker.min.mjs`;
+    }
+
+    const loadingTask = pdfjsLib.getDocument({
+      data: new Uint8Array(arrayBuffer),
+      useSystemFonts: true,
+      disableFontFace: true
+    });
+
+    const pdfDoc = await loadingTask.promise;
+    const numPages = pdfDoc.numPages;
+    const pageTexts: string[] = [];
+
+    for (let i = 1; i <= numPages; i++) {
+      try {
+        const page = await pdfDoc.getPage(i);
+        const textContent = await page.getTextContent();
+        const pageStrings = textContent.items
+          .map((item: any) => ('str' in item ? item.str : ''))
+          .filter((s: string) => s.trim().length > 0);
+        if (pageStrings.length > 0) {
+          pageTexts.push(pageStrings.join(' '));
+        }
+      } catch (pageErr) {
+        console.warn(`Error reading page ${i}:`, pageErr);
+      }
+    }
+
+    const fullText = pageTexts.join('\n\n');
+    return cleanExtractedText(fullText);
+  } catch (err) {
+    console.warn('PDF.js text extraction error:', err);
+    return '';
+  }
 }
 
 export function detectLegalDocumentType(
@@ -444,30 +516,73 @@ export async function extractTextFromFile(file: File): Promise<ExtractedDocument
     }
   }
 
-  // Generic text fallback / PDF stream parsing attempt
-  try {
-    const rawText = await file.text();
-    // Filter non-printable binary characters if PDF or doc
-    const sanitized = rawText.replace(/[^\x20-\x7E\t\r\n]/g, ' ');
-    const cleaned = cleanExtractedText(sanitized);
+  // Dedicated, robust PDF handling
+  if (fileType === 'pdf' || file.type === 'application/pdf') {
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const pdfBase64 = arrayBufferToBase64(arrayBuffer);
+      const extractedText = await extractPdfTextWithPdfJs(arrayBuffer);
 
-    if (cleaned.length > 60) {
-      const detection = detectLegalDocumentType(cleaned, file.name);
+      if (extractedText && extractedText.length > 60 && countWords(extractedText) >= 15 && !isPdfBytecode(extractedText)) {
+        const detection = detectLegalDocumentType(extractedText, file.name);
+        return {
+          filename: file.name,
+          text: extractedText,
+          wordCount: countWords(extractedText),
+          fileType: 'pdf',
+          fileSizeBytes,
+          detectedType: detection.type,
+          detectedSubtype: detection.subtype,
+          pdfBase64,
+          isScannedPdf: false
+        };
+      }
+
+      // If text extraction yielded no selectable text (scanned PDF document / image container)
+      const scannedNotice = `[Scanned Legal Instrument: ${file.name}]\nDocument uploaded as a high-resolution PDF container without a selectable text layer.\nClarifyLex AI's multimodal visual engine will perform direct visual OCR and deep clause analysis.`;
+      const detection = detectLegalDocumentType(scannedNotice, file.name);
       return {
         filename: file.name,
-        text: cleaned,
-        wordCount: countWords(cleaned),
-        fileType,
+        text: scannedNotice,
+        wordCount: countWords(scannedNotice),
+        fileType: 'pdf',
         fileSizeBytes,
         detectedType: detection.type,
-        detectedSubtype: detection.subtype
+        detectedSubtype: detection.subtype,
+        pdfBase64,
+        isScannedPdf: true
       };
+    } catch (pdfErr) {
+      console.warn('PDF extraction failed, falling back:', pdfErr);
     }
-  } catch {
-    // fallback below
   }
 
-  // If binary file could not be cleanly parsed in-browser, provide a descriptive message
+  // Generic text fallback (for non-PDF files only)
+  if (fileType !== 'pdf' && file.type !== 'application/pdf') {
+    try {
+      const rawText = await file.text();
+      // Filter non-printable binary characters
+      const sanitized = rawText.replace(/[^\x20-\x7E\t\r\n]/g, ' ');
+      const cleaned = cleanExtractedText(sanitized);
+
+      if (cleaned.length > 60 && !isPdfBytecode(cleaned)) {
+        const detection = detectLegalDocumentType(cleaned, file.name);
+        return {
+          filename: file.name,
+          text: cleaned,
+          wordCount: countWords(cleaned),
+          fileType,
+          fileSizeBytes,
+          detectedType: detection.type,
+          detectedSubtype: detection.subtype
+        };
+      }
+    } catch {
+      // fallback below
+    }
+  }
+
+  // If binary file could not be cleanly parsed in-browser, provide a clean descriptive message
   const fallback = `[Document: ${file.name}]\nNote: Binary container content parsed. For deepest legal semantic analysis with embedded clauses, you may also paste the raw legal text into the input box below.`;
   const detection = detectLegalDocumentType(fallback, file.name);
   return {

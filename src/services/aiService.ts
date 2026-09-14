@@ -18,31 +18,250 @@ export interface ServerConfigStatus {
   serverEnv: string;
 }
 
+export function getClientGeminiApiKey(settings?: AISettings): string {
+  if (settings?.geminiApiKey && settings.geminiApiKey.trim()) {
+    return settings.geminiApiKey.trim();
+  }
+  if (typeof window !== 'undefined') {
+    const local = localStorage.getItem('clarifylex_gemini_key');
+    if (local && local.trim()) return local.trim();
+  }
+  const metaEnv = typeof import.meta !== 'undefined' ? (import.meta as any).env : undefined;
+  if (metaEnv && metaEnv.VITE_GEMINI_API_KEY) {
+    return metaEnv.VITE_GEMINI_API_KEY.trim();
+  }
+  return '';
+}
+
 export async function checkServerConfig(): Promise<ServerConfigStatus> {
+  const clientKey = getClientGeminiApiKey();
   try {
     const res = await fetch('/api/config');
-    if (!res.ok) throw new Error('Config check failed');
-    return await res.json();
+    if (res.ok) {
+      const data = await res.json();
+      return {
+        hasGeminiKey: Boolean(data.hasGeminiKey || clientKey),
+        hasGroqKey: Boolean(data.hasGroqKey),
+        serverEnv: data.hasGeminiKey ? 'server-gemini' : (clientKey ? 'client-gemini-active' : data.serverEnv || 'production-ready')
+      };
+    }
   } catch {
-    return { hasGeminiKey: false, hasGroqKey: false, serverEnv: 'client-offline' };
+    // server is offline or static hosting
   }
+
+  return {
+    hasGeminiKey: Boolean(clientKey),
+    hasGroqKey: false,
+    serverEnv: clientKey ? 'client-gemini-active' : 'client-key-required'
+  };
+}
+
+const SYSTEM_LEGAL_INSTRUCTION = `You are ClarifyLex AI, an elite legal intelligence and statutory analysis engine.
+You analyze legal documents with the jurisprudential rigor, analytical precision, and statutory grounding of a senior appellate legal scholar and corporate counsel.
+Border all responses strictly within established legal terms, contractual doctrines, and governing statutory acts.
+
+Document Categories & Statutory Frameworks:
+1. Indian Statutory & Commercial Instruments (Amended Acts & Judicial Precedents):
+   - Digital Personal Data Protection Act, 2023 (DPDPA 2023): Isolate Data Fiduciary obligations (Sec 8), Consent Notices (Sec 6), Data Principal statutory rights of correction/erasure/grievance (Sec 12), Significant Data Fiduciary mandates, 72-hour DPBI breach reporting, and statutory penalties up to ₹250 Crores under Schedule 1.
+   - Indian Contract Act, 1872: Section 27 (Agreements in restraint of trade are VOID ab initio; post-termination non-competes are strictly unenforceable in India per Supreme Court in Percept D'Mark v. Zaheer Khan and Niranjan Shankar Golikari), Section 28 (Restraint of legal proceedings), Sections 73 & 74 (Liquidated damages vs penalty; reasonable compensation rule per Kailash Nath Associates v. DDA).
+   - Bharatiya Nyaya Sanhita, 2023 (BNS 2023) & Bharatiya Sakshya Adhiniyam, 2023 (BSA 2023): Isolate criminal breach of trust (Sec 316 BNS) exposures and electronic record admissibility/certificate requirements (Sec 63 BSA replacing Sec 65B Indian Evidence Act).
+   - Real Estate (Regulation and Development) Act, 2016 (RERA): Mandatory Section 2(k) carpet area enforcement, Section 4(2)(l)(D) 70% escrow maintenance, Section 14(3) 5-year structural defect liability, and Section 18 mandatory delay interest pegged at SBI Highest MCLR + 2% per annum.
+   - Arbitration and Conciliation Act, 1996 (as amended): Seat vs Venue distinction (BALCO doctrine), Section 9 interim relief, Section 34 challenge thresholds, and Supreme Court 7-Judge Constitution Bench doctrine on stamping of arbitration agreements.
+   - Patents Act, 1970 & Patents (Amendment) Rules, 2024: Section 3(k) bar on software/algorithms per se (requiring demonstrated technical effect/hardware interface per Ferid Allani v. Union of India), Section 3(d) therapeutic efficacy standards, and Form 27 triennial commercial working requirements.
+   - Companies Act, 2013: Share transfer restrictions enforceability (VB Rangaraj doctrine requiring entrenchment in Articles of Association), Section 188 related party transactions, and board governance resolutions.
+   - Indian Succession Act, 1925 & Hindu Succession Act, 1956 (amended 2005): Coparcenary vs self-acquired property under Vineeta Sharma v. Rakesh Sharma, Section 63 two-witness attestation mandate, and Section 213 probate requirement in presidency towns (Mumbai, Kolkata, Chennai).
+
+2. International Commercial Contracts & General Agreements:
+   - Unilateral indemnity obligations, uncapped direct/consequential damages, liquidated damages reasonableness, auto-renewal traps, unilateral termination covenants, and choice of law / dispute escalation clauses.
+
+3. Patent Specifications & Applications:
+   - Independent Claim scope, dependent claim limitations, 35 U.S.C. 112 / Section 10(4) enablement and definiteness, prior art vulnerability, inventor assignment sweeps, and statutory maintenance clocks.
+
+4. Wills & Testamentary Instruments:
+   - Testamentary capacity recitals, specific devises vs residuary disposition, executor fiduciary immunities, bond waivers, and in terrorem (no-contest) penalty clauses.
+
+5. Corporate Formation & Governance:
+   - Blank-check preferred stock, drag-along / tag-along forced liquidation, founder vesting acceleration, 50/50 deadlock remedies, and director exculpation / indemnification.
+
+Analytical Standards:
+- Ground every assessment in established legal terms: doctrine of unconscionability, void ab initio, contra proferentem, force majeure, quantum meruit, statutory preemption, severability, and estoppel.
+- For EVERY clause provide:
+  1. "plainEnglishText": Clear, jargon-free explanation for business executives or citizens without losing statutory accuracy.
+  2. "executiveSummary": Concise 1-2 sentence commercial risk/statutory assessment.
+  3. "originalText": Exact verbatim excerpt from the document.
+- Provide vernacular translations in Hindi (hi), Spanish (es), and Tamil (ta).
+- Flag strict statutory deadlines, notice periods, or compliance triggers.
+- Formulate a tailored Lawyer Briefing Dossier with tactical, legally bounded questions.
+
+Return JSON adhering strictly to:
+{
+  "documentTitle": string,
+  "extractedDocumentText": string,
+  "documentType": "contract" | "patent" | "will" | "incorporation" | "regulatory" | "other",
+  "documentTypeMetadata": {
+    "detectedType": string,
+    "subtype": string,
+    "jurisdictionOrOffice": string,
+    "keyPartiesOrRoles": [{"role": string, "name": string}],
+    "domainSpecificChecklist": [{"item": string, "status": "pass" | "warning" | "alert", "note": string}]
+  },
+  "executiveSummary": string,
+  "overallRiskScore": number,
+  "riskLevel": "low" | "moderate" | "high" | "critical",
+  "governingLaw": string,
+  "detectedJurisdiction": string,
+  "riskBreakdown": {
+    "overallScore": number,
+    "overallRating": "low" | "moderate" | "high" | "critical",
+    "unilateralObligationsScore": number,
+    "harshIndemnitiesScore": number,
+    "liquidatedDamagesScore": number,
+    "autoRenewalTrapScore": number,
+    "criticalFlagsCount": number,
+    "summary": string
+  },
+  "clauses": [
+    {
+      "id": string,
+      "sectionNumber": string,
+      "title": string,
+      "category": "liability" | "termination" | "ip" | "confidentiality" | "payment" | "dispute" | "compliance" | "other",
+      "riskScore": number,
+      "riskLevel": "low" | "moderate" | "high" | "critical",
+      "originalText": string,
+      "plainEnglishText": string,
+      "executiveSummary": string,
+      "riskReasons": string[],
+      "impactOnUser": string,
+      "suggestedAction": string,
+      "questionForLawyer": string,
+      "deadlinesOrNotices": string,
+      "translations": { "hi": string, "es": string, "ta": string },
+      "domainTag": string
+    }
+  ],
+  "deadlinesAndNoticePeriods": [{"title": string, "timeframe": string, "type": string}],
+  "lawyerBriefingDossier": {
+    "documentTitle": string,
+    "clientNamePlaceholder": string,
+    "keyAmbiguities": string[],
+    "conflictingClauses": string[],
+    "factualTimeline": [{"event": string, "triggerCondition": string, "sectionRef": string}],
+    "targetedQuestions": string[]
+  }
+}`;
+
+/**
+ * Direct browser-to-Gemini REST invocation for production deployments on Vercel or static hosting
+ */
+async function executeDirectClientGeminiAnalysis(
+  text: string,
+  title: string,
+  apiKey: string,
+  modelName: string = 'gemini-2.5-flash',
+  pdfBase64?: string
+): Promise<any> {
+  const modelsToTry = [modelName, 'gemini-2.5-flash', 'gemini-1.5-flash'];
+  let lastError: any = null;
+
+  for (const model of modelsToTry) {
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+      const parts: any[] = [];
+      if (pdfBase64) {
+        parts.push({
+          inlineData: {
+            mimeType: 'application/pdf',
+            data: pdfBase64
+          }
+        });
+        parts.push({
+          text: `Document Title: ${title || 'Legal Document'}\n\nTask: Visually read and OCR all pages of this legal PDF, transcribe all clauses, and perform full statutory analysis.`
+        });
+      } else {
+        parts.push({
+          text: `Document Title: ${title || 'Legal Document'}\n\nDocument Text:\n${text.slice(0, 30000)}`
+        });
+      }
+
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts }],
+          systemInstruction: { parts: [{ text: SYSTEM_LEGAL_INSTRUCTION }] },
+          generationConfig: {
+            responseMimeType: 'application/json',
+            temperature: 0.1
+          }
+        })
+      });
+
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(`Gemini API returned ${res.status}: ${errText}`);
+      }
+
+      const json = await res.json();
+      const outputText = json.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!outputText) throw new Error('Empty text candidate returned from Gemini');
+      return JSON.parse(outputText);
+    } catch (err) {
+      lastError = err;
+      console.warn(`Direct client Gemini model ${model} attempt failed:`, err);
+    }
+  }
+
+  throw lastError || new Error('All direct Gemini model attempts failed.');
 }
 
 /**
  * Main legal document analysis pipeline
  * 1. PII Redaction (Client-side)
- * 2. Server API request to /api/analyze (using Gemini/Groq)
- * 3. Graceful fallback to heuristic & synthetic legal engine if API is offline or not configured
+ * 2. Server API request to /api/analyze (using Gemini/Groq on serverless/container)
+ * 3. Direct client Gemini API execution if serverless is unreachable
+ * 4. Graceful fallback for matched library samples or explicit heuristic requests
  */
 export async function analyzeLegalDocument(
   rawText: string,
   docTitle: string,
-  settings: AISettings
+  settings: AISettings,
+  pdfBase64?: string,
+  allowHeuristicFallback: boolean = false
 ): Promise<DocumentAnalysisResult> {
   // Check if rawText matches any sample preset directly
   const matchedSample = SAMPLE_DOCUMENTS.find(
-    (s) => s.rawText.trim() === rawText.trim() || rawText.includes(s.title)
+    (s) =>
+      s.rawText.trim() === rawText.trim() ||
+      (rawText.length > 50 && s.rawText.includes(rawText.slice(0, 80))) ||
+      rawText.includes(s.title)
   );
+
+  if (matchedSample && !pdfBase64) {
+    const sampleAnalysis = matchedSample.precomputedAnalysis;
+    const finalDocType = sampleAnalysis.documentType || matchedSample.documentType || LegalDocumentType.CONTRACT;
+    const finalBreakdown = {
+      ...sampleAnalysis.riskBreakdown,
+      documentType: finalDocType,
+      typeDimensions:
+        sampleAnalysis.riskBreakdown.typeDimensions ||
+        compileRiskBreakdown(sampleAnalysis.clauses, finalDocType).typeDimensions
+    };
+
+    return {
+      ...sampleAnalysis,
+      documentTitle: docTitle || matchedSample.title,
+      documentType: finalDocType,
+      documentTypeMetadata: sampleAnalysis.documentTypeMetadata,
+      riskBreakdown: finalBreakdown,
+      rawText,
+      redactedText: rawText,
+      piiRedacted: false,
+      redactionMap: {},
+      analyzedAt: new Date().toISOString(),
+      isHeuristicFallback: false
+    };
+  }
 
   // 1. Client-Side PII Redaction
   const piiResult = settings.enablePiiRedaction
@@ -59,7 +278,7 @@ export async function analyzeLegalDocument(
   const typeDetection = detectLegalDocumentType(rawText, docTitle);
   const typeMetadata = extractDocumentMetadata(rawText, typeDetection.type, typeDetection.subtype);
 
-  // Attempt server API call
+  // Attempt 1: Server API call (Vercel serverless or local container)
   try {
     const res = await fetch('/api/analyze', {
       method: 'POST',
@@ -71,10 +290,11 @@ export async function analyzeLegalDocument(
       body: JSON.stringify({
         text: piiResult.redactedText,
         title: docTitle,
-        model: settings.geminiModel,
+        model: settings.geminiModel || 'gemini-2.5-flash',
         provider: settings.preferredProvider,
         docType: typeDetection.type,
-        docSubtype: typeDetection.subtype
+        docSubtype: typeDetection.subtype,
+        pdfBase64: pdfBase64 || undefined
       })
     });
 
@@ -85,52 +305,96 @@ export async function analyzeLegalDocument(
         const enrichedBreakdown: RiskBreakdown = {
           ...data.riskBreakdown,
           documentType: finalDocType,
-          typeDimensions: data.riskBreakdown?.typeDimensions && data.riskBreakdown.typeDimensions.length > 0
-            ? data.riskBreakdown.typeDimensions
-            : compileRiskBreakdown(data.clauses, finalDocType).typeDimensions
+          typeDimensions:
+            data.riskBreakdown?.typeDimensions && data.riskBreakdown.typeDimensions.length > 0
+              ? data.riskBreakdown.typeDimensions
+              : compileRiskBreakdown(data.clauses, finalDocType).typeDimensions
         };
+
+        const cleanExtracted =
+          data.extractedDocumentText ||
+          (data.clauses && data.clauses.length > 0
+            ? data.clauses.map((c: any) => `${c.sectionNumber || ''} ${c.title || ''}\n${c.originalText || ''}`).join('\n\n')
+            : rawText);
 
         return {
           ...data,
           documentType: finalDocType,
           documentTypeMetadata: data.documentTypeMetadata || typeMetadata,
           riskBreakdown: enrichedBreakdown,
-          rawText,
+          rawText: cleanExtracted,
+          extractedDocumentText: cleanExtracted,
           redactedText: piiResult.redactedText,
           piiRedacted: settings.enablePiiRedaction,
           redactionMap: piiResult.redactionMap,
-          analyzedAt: new Date().toISOString()
+          analyzedAt: new Date().toISOString(),
+          isHeuristicFallback: false
         };
       }
     }
   } catch (err) {
-    console.warn('Backend /api/analyze call failed or offline, engaging local legal intelligence fallback:', err);
+    console.warn('Backend /api/analyze call unreachable or failed, evaluating direct client Gemini connection:', err);
   }
 
-  // Local Intelligent Legal Parsing Fallback (Heuristic extraction + sample augmentation)
-  if (matchedSample) {
-    const sampleAnalysis = matchedSample.precomputedAnalysis;
-    const finalDocType = sampleAnalysis.documentType || matchedSample.documentType || typeDetection.type;
-    const finalBreakdown = {
-      ...sampleAnalysis.riskBreakdown,
-      documentType: finalDocType,
-      typeDimensions: sampleAnalysis.riskBreakdown.typeDimensions || compileRiskBreakdown(sampleAnalysis.clauses, finalDocType).typeDimensions
-    };
+  // Attempt 2: Direct Client-Side Gemini Execution (Key in settings, localStorage, or Vercel VITE_ env)
+  const clientGeminiKey = getClientGeminiApiKey(settings);
+  if (clientGeminiKey) {
+    try {
+      console.log('Connecting directly to Google Gemini API from client runtime...');
+      const directData = await executeDirectClientGeminiAnalysis(
+        piiResult.redactedText,
+        docTitle,
+        clientGeminiKey,
+        settings.geminiModel || 'gemini-2.5-flash',
+        pdfBase64
+      );
 
-    return {
-      ...sampleAnalysis,
-      documentTitle: docTitle || matchedSample.title,
-      documentType: finalDocType,
-      documentTypeMetadata: sampleAnalysis.documentTypeMetadata || typeMetadata,
-      riskBreakdown: finalBreakdown,
-      rawText,
-      redactedText: piiResult.redactedText,
-      piiRedacted: settings.enablePiiRedaction,
-      redactionMap: piiResult.redactionMap,
-      analyzedAt: new Date().toISOString()
-    };
+      if (directData && directData.clauses && directData.clauses.length > 0) {
+        const finalDocType: LegalDocumentType = directData.documentType || typeDetection.type;
+        const enrichedBreakdown: RiskBreakdown = {
+          ...directData.riskBreakdown,
+          documentType: finalDocType,
+          typeDimensions:
+            directData.riskBreakdown?.typeDimensions && directData.riskBreakdown.typeDimensions.length > 0
+              ? directData.riskBreakdown.typeDimensions
+              : compileRiskBreakdown(directData.clauses, finalDocType).typeDimensions
+        };
+
+        const cleanExtracted =
+          directData.extractedDocumentText ||
+          (directData.clauses && directData.clauses.length > 0
+            ? directData.clauses.map((c: any) => `${c.sectionNumber || ''} ${c.title || ''}\n${c.originalText || ''}`).join('\n\n')
+            : rawText);
+
+        return {
+          ...directData,
+          documentId: `doc-${Date.now()}`,
+          documentTitle: docTitle || directData.documentTitle || 'Analyzed Legal Document',
+          documentType: finalDocType,
+          documentTypeMetadata: directData.documentTypeMetadata || typeMetadata,
+          riskBreakdown: enrichedBreakdown,
+          rawText: cleanExtracted,
+          extractedDocumentText: cleanExtracted,
+          redactedText: piiResult.redactedText,
+          piiRedacted: settings.enablePiiRedaction,
+          redactionMap: piiResult.redactionMap,
+          analyzedAt: new Date().toISOString(),
+          isHeuristicFallback: false
+        };
+      }
+    } catch (directErr) {
+      console.error('Direct client Gemini analysis failed:', directErr);
+    }
   }
 
+  // Attempt 3: If no API key is found and not explicitly requested to force offline heuristics, throw error
+  if (!allowHeuristicFallback) {
+    throw new Error(
+      'GEMINI_API_KEY_REQUIRED: ClarifyLex AI requires a Google Gemini API Key to perform real-time statutory risk analysis and clause extraction on your custom document.'
+    );
+  }
+
+  // Fallback heuristic legal engine (only if explicitly opted in)
   return generateHeuristicAnalysis(
     rawText,
     piiResult.redactedText,
@@ -365,12 +629,15 @@ export async function compareContracts(
   nameB: string,
   settings: AISettings
 ): Promise<ContractComparisonResult> {
+  const clientKey = getClientGeminiApiKey(settings);
+
+  // Attempt 1: Server endpoint
   try {
     const res = await fetch('/api/compare', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...(settings.geminiApiKey ? { 'x-gemini-key': settings.geminiApiKey } : {}),
+        ...(clientKey ? { 'x-gemini-key': clientKey } : {}),
         ...(settings.groqApiKey ? { 'x-groq-key': settings.groqApiKey } : {})
       },
       body: JSON.stringify({
@@ -378,7 +645,7 @@ export async function compareContracts(
         textB,
         nameA,
         nameB,
-        model: settings.geminiModel,
+        model: settings.geminiModel || 'gemini-2.5-flash',
         provider: settings.preferredProvider
       })
     });
@@ -388,7 +655,66 @@ export async function compareContracts(
       if (data && data.changes) return data;
     }
   } catch (err) {
-    console.warn('Comparator API call fell back to local comparator engine:', err);
+    console.warn('Comparator API server call failed, trying direct Gemini client:', err);
+  }
+
+  // Attempt 2: Direct Gemini REST
+  if (clientKey) {
+    try {
+      const prompt = `Compare these two legal contracts side-by-side:
+Document A (${nameA || 'Version A'}):
+${textA.slice(0, 15000)}
+
+Document B (${nameB || 'Version B'}):
+${textB.slice(0, 15000)}
+
+Identify all modified, added, and removed provisions. Analyze the risk shift, rights surrendered, and provide tactical legal commentary.
+Output JSON schema:
+{
+  "docAName": string,
+  "docBName": string,
+  "summaryOfKeyChanges": string,
+  "rightsSurrenderedSummary": string[],
+  "rightsGainedSummary": string[],
+  "riskShiftScore": number (-100 to 100),
+  "changes": [
+    {
+      "type": "added" | "removed" | "modified" | "unchanged",
+      "sectionA": string,
+      "sectionB": string,
+      "title": string,
+      "contentA": string,
+      "contentB": string,
+      "riskShift": {
+        "from": "low" | "moderate" | "high" | "critical",
+        "to": "low" | "moderate" | "high" | "critical",
+        "explanation": string
+      },
+      "rightsCommentary": string
+    }
+  ]
+}`;
+
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${settings.geminiModel || 'gemini-2.5-flash'}:generateContent?key=${clientKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: { responseMimeType: 'application/json' }
+          })
+        }
+      );
+
+      if (res.ok) {
+        const json = await res.json();
+        const text = json.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (text) return JSON.parse(text);
+      }
+    } catch (e) {
+      console.warn('Direct Gemini comparator failed:', e);
+    }
   }
 
   // High-fidelity fallback comparison
@@ -473,19 +799,22 @@ export async function askDocumentQuestion(
   history: ChatMessage[],
   settings: AISettings
 ): Promise<ChatMessage> {
+  const clientKey = getClientGeminiApiKey(settings);
+
+  // Attempt 1: Server API
   try {
     const res = await fetch('/api/chat', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...(settings.geminiApiKey ? { 'x-gemini-key': settings.geminiApiKey } : {}),
+        ...(clientKey ? { 'x-gemini-key': clientKey } : {}),
         ...(settings.groqApiKey ? { 'x-groq-key': settings.groqApiKey } : {})
       },
       body: JSON.stringify({
         question,
         documentText: documentText.slice(0, 15000),
         history: history.slice(-6).map((h) => ({ role: h.role, content: h.content })),
-        model: settings.geminiModel,
+        model: settings.geminiModel || 'gemini-2.5-flash',
         provider: settings.preferredProvider
       })
     });
@@ -503,7 +832,49 @@ export async function askDocumentQuestion(
       }
     }
   } catch (err) {
-    console.warn('Chat API endpoint offline, using grounded heuristic responder:', err);
+    console.warn('Chat API endpoint offline, checking direct client Gemini connection:', err);
+  }
+
+  // Attempt 2: Direct Gemini REST
+  if (clientKey) {
+    try {
+      const prompt = `You are ClarifyLex AI, answering a legal query strictly grounded on this document:
+Document Excerpt:
+${documentText.slice(0, 20000)}
+
+User Question: ${question}
+
+Provide an authoritative, clear response citing exact clauses, sections, or statutory standards. Return JSON with "content" (string) and "citations" (array of {section, clauseId, excerpt}).`;
+
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${settings.geminiModel || 'gemini-2.5-flash'}:generateContent?key=${clientKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: { responseMimeType: 'application/json' }
+          })
+        }
+      );
+
+      if (res.ok) {
+        const json = await res.json();
+        const text = json.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (text) {
+          const parsed = JSON.parse(text);
+          return {
+            id: `msg-${Date.now()}`,
+            role: 'assistant',
+            content: parsed.content || text,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            citations: parsed.citations || []
+          };
+        }
+      }
+    } catch (e) {
+      console.warn('Direct Gemini chat failed:', e);
+    }
   }
 
   // Grounded local response with citation detection

@@ -19,7 +19,10 @@ export function SettingsModal({
   serverHasGemini,
   serverHasGroq
 }: SettingsModalProps) {
-  const [formData, setFormData] = useState<AISettings>({ ...settings });
+  const [formData, setFormData] = useState<AISettings>(() => ({
+    ...settings,
+    geminiApiKey: settings.geminiApiKey || (typeof window !== 'undefined' ? localStorage.getItem('clarifylex_gemini_key') || '' : '')
+  }));
   const [showGeminiKey, setShowGeminiKey] = useState(false);
   const [showGroqKey, setShowGroqKey] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
@@ -27,6 +30,11 @@ export function SettingsModal({
   if (!isOpen) return null;
 
   const handleSave = () => {
+    if (formData.geminiApiKey && formData.geminiApiKey.trim()) {
+      localStorage.setItem('clarifylex_gemini_key', formData.geminiApiKey.trim());
+    } else {
+      localStorage.removeItem('clarifylex_gemini_key');
+    }
     onSave(formData);
     setSaveSuccess(true);
     setTimeout(() => {

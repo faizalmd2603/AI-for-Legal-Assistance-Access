@@ -21,6 +21,19 @@ interface ClauseCardProps {
   onSelectClause: (clause: ClauseAnalysis) => void;
 }
 
+function sanitizeForSpeech(text: string): string {
+  if (!text) return '';
+  return text
+    .replace(/\[(?:Hindi|Spanish|Tamil):[^\]]+\]/gi, '')
+    .replace(/%PDF[^\s]+/gi, '')
+    .replace(/\/[A-Za-z0-9]+/g, ' ')
+    .replace(/<<|>>/g, ' ')
+    .replace(/[*_#`~]/g, '')
+    .replace(/[^\w\s.,!?'"()-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 export function ClauseCard({
   clause,
   readingLevel,
@@ -77,14 +90,15 @@ export function ClauseCard({
   };
 
   const displayText = getDisplayText();
-  const isCurrentlySpeakingThis = speechStatus.isPlaying && speechStatus.currentText === displayText;
+  const cleanSpeechText = sanitizeForSpeech(displayText);
+  const isCurrentlySpeakingThis = speechStatus.isPlaying && speechStatus.currentText === cleanSpeechText;
 
   const handleToggleSpeech = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (isCurrentlySpeakingThis) {
       speechService.stop();
     } else {
-      speechService.speak(displayText, selectedLanguage, 1.0);
+      speechService.speak(cleanSpeechText, selectedLanguage, 1.0);
     }
   };
 

@@ -65,6 +65,10 @@ export function DocumentAnalyzer({
   const [selectedClause, setSelectedClause] = useState<ClauseAnalysis | null>(currentAnalysis?.clauses?.[0] || null);
   const [isPiiModalOpen, setIsPiiModalOpen] = useState<boolean>(false);
   const [isChecklistExpanded, setIsChecklistExpanded] = useState<boolean>(true);
+  const [uploadedPdfBase64, setUploadedPdfBase64] = useState<string | null>(null);
+  const [apiKeyRequired, setApiKeyRequired] = useState<boolean>(false);
+  const [inlineApiKey, setInlineApiKey] = useState<string>('');
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
 
   const documentViewerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -83,41 +87,83 @@ export function DocumentAnalyzer({
     }
   }, [selectedClause]);
 
-  const handleRunAnalysis = async (textToAnalyze?: string, customTitle?: string) => {
+  const handleRunAnalysis = async (
+    textToAnalyze?: string,
+    customTitle?: string,
+    pdfBase64?: string | null,
+    allowHeuristicFallback: boolean = false
+  ) => {
     const text = textToAnalyze || inputText;
     const title = customTitle || docTitle;
+    const pdf = pdfBase64 !== undefined ? pdfBase64 : uploadedPdfBase64;
 
-    if (!text.trim()) return;
+    if (!text.trim() && !pdf) return;
 
     setIsLoading(true);
+    setAnalysisError(null);
+    setApiKeyRequired(false);
+
     try {
-      const result = await analyzeLegalDocument(text, title, settings);
+      const result = await analyzeLegalDocument(
+        text,
+        title,
+        settings,
+        pdf || undefined,
+        allowHeuristicFallback
+      );
       onAnalysisUpdate(result);
       if (result.clauses.length > 0) {
         setSelectedClause(result.clauses[0]);
       }
-    } catch (err) {
+      if (result.extractedDocumentText) {
+        setInputText(result.extractedDocumentText);
+      }
+    } catch (err: any) {
       console.error('Analysis failed:', err);
+      if (err?.message?.includes('GEMINI_API_KEY_REQUIRED')) {
+        setApiKeyRequired(true);
+      } else {
+        setAnalysisError(err?.message || 'Analysis failed. Please try again.');
+      }
     } finally {
       setIsLoading(false);
     }
   };
 
+  const handleSaveKeyAndAnalyze = () => {
+    if (!inlineApiKey.trim()) return;
+    localStorage.setItem('clarifylex_gemini_key', inlineApiKey.trim());
+    settings.geminiApiKey = inlineApiKey.trim();
+    setApiKeyRequired(false);
+    handleRunAnalysis(inputText, docTitle, uploadedPdfBase64, false);
+  };
+
   const handleSelectSample = (sample: SampleDocument) => {
+    setUploadedPdfBase64(null);
+    setApiKeyRequired(false);
+    setAnalysisError(null);
     setInputText(sample.rawText);
     setDocTitle(sample.title);
-    handleRunAnalysis(sample.rawText, sample.title);
+    handleRunAnalysis(sample.rawText, sample.title, null, false);
   };
 
   const handleFileUpload = async (file: File) => {
     setIsLoading(true);
+    setAnalysisError(null);
     try {
       const extracted = await extractTextFromFile(file);
       setInputText(extracted.text);
-      setDocTitle(file.name.replace(/\.[^/.]+$/, ''));
-      await handleRunAnalysis(extracted.text, file.name.replace(/\.[^/.]+$/, ''));
-    } catch (err) {
+      setUploadedPdfBase64(extracted.pdfBase64 || null);
+      const title = file.name.replace(/\.[^/.]+$/, '');
+      setDocTitle(title);
+      await handleRunAnalysis(extracted.text, title, extracted.pdfBase64 || null, false);
+    } catch (err: any) {
       console.error('File extraction failed:', err);
+      if (err?.message?.includes('GEMINI_API_KEY_REQUIRED')) {
+        setApiKeyRequired(true);
+      } else {
+        setAnalysisError(err?.message || 'File extraction failed');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -291,7 +337,7 @@ export function DocumentAnalyzer({
 
               <button
                 id="btn-run-analysis"
-                disabled={isLoading || !inputText.trim()}
+                disabled={isLoading || (!inputText.trim() && !uploadedPdfBase64)}
                 onClick={() => handleRunAnalysis()}
                 className={`px-5 py-2.5 rounded-xl font-semibold text-xs flex items-center gap-2 transition-all shadow-lg cursor-pointer ${
                   isLoading
@@ -314,7 +360,98 @@ export function DocumentAnalyzer({
             </div>
           </div>
         </div>
+
+        {/* Dynamic Gemini API Key Prompt for Custom Documents */}
+        {apiKeyRequired && (
+          <div className="mt-4 p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-slate-200">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+              <div className="space-y-2 flex-1">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <h4 className="text-xs font-bold text-amber-300">
+                    Google Gemini API Key Required for Live Document Analysis
+                  </h4>
+                  <span className="text-[10px] bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded-full font-medium">
+                    Production Vercel Ready
+                  </span>
+                </div>
+                <p className="text-xs text-slate-300">
+                  To perform real-time, clause-by-clause statutory analysis, visual PDF OCR, and risk scoring on your uploaded document, provide your Google Gemini API Key. It is stored securely in your browser's local storage.
+                </p>
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 pt-1">
+                  <input
+                    type="password"
+                    value={inlineApiKey}
+                    onChange={(e) => setInlineApiKey(e.target.value)}
+                    placeholder="Paste your Gemini API key (AIzaSy...)"
+                    className="bg-slate-950 border border-slate-700 text-xs text-slate-100 rounded-lg px-3 py-2 flex-1 focus:outline-none focus:border-amber-400 font-mono"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleSaveKeyAndAnalyze}
+                    disabled={!inlineApiKey.trim() || isLoading}
+                    className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs px-4 py-2 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    Save Key &amp; Analyze Real Document
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleRunAnalysis(undefined, undefined, undefined, true)}
+                    className="bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs px-3 py-2 rounded-lg transition-colors cursor-pointer"
+                  >
+                    Run Offline Estimate (No AI)
+                  </button>
+                </div>
+                <div className="text-[11px] text-slate-400 flex items-center justify-between flex-wrap gap-2 pt-1">
+                  <span>
+                    Get a free key from{' '}
+                    <a
+                      href="https://aistudio.google.com"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-amber-400 underline hover:text-amber-300 font-medium"
+                    >
+                      Google AI Studio
+                    </a>
+                    .
+                  </span>
+                  <span>
+                    Or choose any contract from the <strong>Synthetic Document Library</strong> dropdown above to test instantly.
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Error notification */}
+        {analysisError && (
+          <div className="mt-4 p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 shrink-0" />
+              <span>{analysisError}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setAnalysisError(null)}
+              className="text-slate-400 hover:text-white text-xs px-2 py-0.5 rounded cursor-pointer"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
       </div>
+
+      {currentAnalysis?.isHeuristicFallback && (
+        <div className="bg-amber-950/40 border border-amber-800/60 rounded-xl p-3 flex items-center justify-between text-xs text-amber-200">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+            <span>
+              <strong>Rule-Based Offline Mode:</strong> This document was evaluated using local legal heuristics. Connect your Gemini API Key in Settings or enter it above for deep AI OCR and statutory citations.
+            </span>
+          </div>
+        </div>
+      )}
 
       {!currentAnalysis ? (
         <div id="analyzer-ready-state" className="bg-slate-900 border border-slate-800 rounded-2xl p-8 sm:p-12 text-center shadow-xl space-y-6">

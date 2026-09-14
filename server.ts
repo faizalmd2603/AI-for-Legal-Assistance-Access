@@ -8,8 +8,19 @@ dotenv.config();
 const app = express();
 const PORT = 3000;
 
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+// Enable CORS for Vercel and all preview deployments
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-gemini-key, x-groq-key');
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200);
+  }
+  next();
+});
+
+app.use(express.json({ limit: '25mb' }));
+app.use(express.urlencoded({ extended: true, limit: '25mb' }));
 
 // Helper to get or instantiate GoogleGenAI
 function getGeminiClient(customKey?: string): GoogleGenAI | null {
@@ -42,10 +53,10 @@ app.get('/api/health', (req: Request, res: Response) => {
 // 2. Document Risk & Clause Analysis
 app.post('/api/analyze', async (req: Request, res: Response) => {
   const customKey = req.headers['x-gemini-key'] as string | undefined;
-  const { text, title, model } = req.body;
+  const { text, title, model, pdfBase64 } = req.body;
 
-  if (!text || typeof text !== 'string') {
-    return res.status(400).json({ error: 'Valid text payload is required.' });
+  if ((!text || typeof text !== 'string') && !pdfBase64) {
+    return res.status(400).json({ error: 'Valid text payload or pdfBase64 is required.' });
   }
 
   const ai = getGeminiClient(customKey);
@@ -56,7 +67,7 @@ app.post('/api/analyze', async (req: Request, res: Response) => {
   }
 
   try {
-    const selectedModel = model || 'gemini-3.5-flash';
+    const selectedModel = model || 'gemini-2.5-flash';
 
     const systemInstruction = `You are ClarifyLex AI, an elite legal intelligence and statutory analysis engine.
 You analyze legal documents with the jurisprudential rigor, analytical precision, and statutory grounding of a senior appellate legal scholar and corporate counsel.
@@ -95,11 +106,26 @@ Analytical Standards:
 - Flag strict statutory deadlines, notice periods, or compliance triggers.
 - Formulate a tailored Lawyer Briefing Dossier with tactical, legally bounded questions.`;
 
-    const prompt = `Document Title: ${title || 'Legal Document'}\n\nDocument Text:\n${text.slice(0, 30000)}`;
+    const contents: any[] = [];
+    if (pdfBase64 && typeof pdfBase64 === 'string') {
+      contents.push({
+        inlineData: {
+          mimeType: 'application/pdf',
+          data: pdfBase64
+        }
+      });
+      contents.push({
+        text: `Document Title: ${title || 'Legal Document'}\n\nTask: Visually read this legal PDF, OCR all pages, transcribe all text, and perform full clause-by-clause statutory analysis.`
+      });
+    } else {
+      contents.push({
+        text: `Document Title: ${title || 'Legal Document'}\n\nDocument Text:\n${(text || '').slice(0, 30000)}`
+      });
+    }
 
     const response = await ai.models.generateContent({
       model: selectedModel,
-      contents: prompt,
+      contents,
       config: {
         systemInstruction,
         responseMimeType: 'application/json',
@@ -107,6 +133,7 @@ Analytical Standards:
           type: Type.OBJECT,
           properties: {
             documentTitle: { type: Type.STRING },
+            extractedDocumentText: { type: Type.STRING, description: 'Full verbatim transcription of the document text' },
             documentType: { type: Type.STRING, description: "One of: 'contract', 'patent', 'will', 'incorporation', 'regulatory', 'other'" },
             documentTypeMetadata: {
               type: Type.OBJECT,
@@ -422,6 +449,10 @@ async function startServer() {
   });
 }
 
-startServer().catch((err) => {
-  console.error('Server startup error:', err);
-});
+export default app;
+
+if (!process.env.VERCEL) {
+  startServer().catch((err) => {
+    console.error('Server startup error:', err);
+  });
+}
