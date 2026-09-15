@@ -16,9 +16,8 @@
 
 | Environment | Access Link | Description |
 | :--- | :--- | :--- |
-| 🚀 **Live Production App** | [**Launch ClarifyLex AI (Cloud Run)**](https://ais-pre-rjgjvvxwx2xtxf3b6bn3cy-487136188765.asia-east1.run.app) | Fully functional, cloud-hosted production instance with serverless Gemini backend. |
-| ⚡ **Vercel Deployment** | [**ClarifyLex on Vercel**](https://clarifylex-ai.vercel.app) | Vercel-optimized client & serverless deployment target. *(See [Vercel Setup](#-deploy-to-vercel) below to learn how to deploy your own instance.)* |
-| 🛠️ **Dev Sandbox** | [**Development Sandbox**](https://ais-dev-rjgjvvxwx2xtxf3b6bn3cy-487136188765.asia-east1.run.app) | Live hot-reloading development preview environment. |
+| ⚡ **Vercel Deployment** | [**ClarifyLex on Vercel**](https://ai-for-legal-assistance-access-i7v6zv0cu.vercel.app/) | Vercel-optimized client & serverless deployment target. *(See [Vercel Setup](#-deploy-to-vercel) below to learn how to deploy your own instance.)* |
+
 
 *Zero-setup testing: You do not need an API key to evaluate the application. ClarifyLex AI includes an extensive library of precomputed synthetic legal documents for immediate, zero-latency testing.*
 
