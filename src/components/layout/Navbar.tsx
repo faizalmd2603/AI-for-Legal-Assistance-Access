@@ -55,56 +55,68 @@ export function Navbar({
         </div>
 
         {/* Primary Navigation Tabs */}
-        <nav className="flex items-center gap-1 overflow-x-auto pb-1 md:pb-0 scrollbar-none" aria-label="Workflows">
+        <nav className="flex items-center gap-1 overflow-x-auto pb-1 md:pb-0 scrollbar-none" role="tablist" aria-label="Legal Assistance Workflows">
           <button
             id="tab-analyzer"
+            role="tab"
+            aria-selected={activeTab === 'analyzer'}
+            aria-controls="view-analyzer"
             onClick={() => onTabChange('analyzer')}
-            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
+            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all focus-visible:ring-2 focus-visible:ring-teal-400 focus-visible:outline-none cursor-pointer ${
               activeTab === 'analyzer'
                 ? 'bg-teal-500/15 border border-teal-500/30 text-teal-300 shadow-sm'
                 : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
             }`}
           >
-            <FileSearch className="w-3.5 h-3.5" />
+            <FileSearch className="w-3.5 h-3.5" aria-hidden="true" />
             <span>Document Analyzer</span>
           </button>
 
           <button
             id="tab-comparator"
+            role="tab"
+            aria-selected={activeTab === 'comparator'}
+            aria-controls="view-comparator"
             onClick={() => onTabChange('comparator')}
-            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
+            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all focus-visible:ring-2 focus-visible:ring-teal-400 focus-visible:outline-none cursor-pointer ${
               activeTab === 'comparator'
                 ? 'bg-teal-500/15 border border-teal-500/30 text-teal-300 shadow-sm'
                 : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
             }`}
           >
-            <GitCompare className="w-3.5 h-3.5" />
+            <GitCompare className="w-3.5 h-3.5" aria-hidden="true" />
             <span>Contract Diff</span>
           </button>
 
           <button
             id="tab-chat"
+            role="tab"
+            aria-selected={activeTab === 'chat'}
+            aria-controls="view-chat"
             onClick={() => onTabChange('chat')}
-            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
+            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all focus-visible:ring-2 focus-visible:ring-teal-400 focus-visible:outline-none cursor-pointer ${
               activeTab === 'chat'
                 ? 'bg-teal-500/15 border border-teal-500/30 text-teal-300 shadow-sm'
                 : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
             }`}
           >
-            <MessageSquare className="w-3.5 h-3.5" />
+            <MessageSquare className="w-3.5 h-3.5" aria-hidden="true" />
             <span>Contextual Chat</span>
           </button>
 
           <button
             id="tab-briefing"
+            role="tab"
+            aria-selected={activeTab === 'briefing'}
+            aria-controls="view-briefing"
             onClick={() => onTabChange('briefing')}
-            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
+            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all focus-visible:ring-2 focus-visible:ring-teal-400 focus-visible:outline-none cursor-pointer ${
               activeTab === 'briefing'
                 ? 'bg-teal-500/15 border border-teal-500/30 text-teal-300 shadow-sm'
                 : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
             }`}
           >
-            <Briefcase className="w-3.5 h-3.5" />
+            <Briefcase className="w-3.5 h-3.5" aria-hidden="true" />
             <span>Lawyer Action Pack</span>
           </button>
         </nav>

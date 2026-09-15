@@ -1,8 +1,22 @@
 {
-  "name": "react-example",
+  "name": "clarifylex-ai",
+  "version": "1.0.0",
+  "description": "GenAI-powered solution that makes legal information and basic legal assistance more accessible by helping users understand, compare, and navigate legal documents and information.",
   "private": true,
-  "version": "0.0.0",
   "type": "module",
+  "keywords": [
+    "legal-tech",
+    "legal-assistance",
+    "contract-simplification",
+    "contract-comparison",
+    "risk-intelligence",
+    "statutory-analysis",
+    "accessibility",
+    "gemini-ai",
+    "pii-protection"
+  ],
+  "author": "ClarifyLex AI",
+  "license": "MIT",
   "scripts": {
     "dev": "tsx server.ts",
     "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",

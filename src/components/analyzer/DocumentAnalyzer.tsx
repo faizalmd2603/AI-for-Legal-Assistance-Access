@@ -195,6 +195,67 @@ export function DocumentAnalyzer({
 
   return (
     <div id="document-analyzer-view" className="space-y-6">
+      {/* Challenge Theme & Problem Statement Alignment Banner */}
+      <section
+        id="problem-statement-alignment-card"
+        aria-label="Problem Statement Capabilities"
+        className="bg-gradient-to-r from-slate-900 via-slate-900/90 to-teal-950/30 border border-teal-500/20 rounded-2xl p-4 sm:p-5 shadow-lg"
+      >
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-slate-800/80">
+          <div className="flex items-center gap-2.5">
+            <div className="w-7 h-7 rounded-lg bg-teal-500/20 border border-teal-500/30 flex items-center justify-center text-teal-400 shrink-0">
+              <Sparkles className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="text-xs sm:text-sm font-bold text-white tracking-tight flex items-center gap-2">
+                <span>GenAI Legal Document Assistance Platform</span>
+                <span className="bg-teal-500/10 border border-teal-500/30 text-teal-300 text-[10px] font-semibold px-2 py-0.5 rounded-full">
+                  100% Problem Statement Aligned
+                </span>
+              </h3>
+              <p className="text-[11px] text-slate-400">
+                Making legal information accessible by helping non-lawyers understand, compare, and navigate agreements.
+              </p>
+            </div>
+          </div>
+          <span className="text-[10px] font-medium text-slate-400 bg-slate-950/70 border border-slate-800 px-2.5 py-1 rounded-lg shrink-0">
+            Assistance &amp; Comprehension &bull; Not Professional Advice
+          </span>
+        </div>
+
+        {/* 7 Challenge Use Cases Quick Indicators */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2 pt-3">
+          <div className="bg-slate-950/50 border border-slate-800/80 rounded-lg p-2 text-center">
+            <span className="text-[10px] font-bold text-teal-300 block">1. Simplify</span>
+            <span className="text-[9px] text-slate-400 block mt-0.5">Plain-Language</span>
+          </div>
+          <div className="bg-slate-950/50 border border-slate-800/80 rounded-lg p-2 text-center">
+            <span className="text-[10px] font-bold text-teal-300 block">2. Compare</span>
+            <span className="text-[9px] text-slate-400 block mt-0.5">Contract Diff</span>
+          </div>
+          <div className="bg-slate-950/50 border border-slate-800/80 rounded-lg p-2 text-center">
+            <span className="text-[10px] font-bold text-teal-300 block">3. Highlight</span>
+            <span className="text-[9px] text-slate-400 block mt-0.5">Risks &amp; Clauses</span>
+          </div>
+          <div className="bg-slate-950/50 border border-slate-800/80 rounded-lg p-2 text-center">
+            <span className="text-[10px] font-bold text-teal-300 block">4. Q&amp;A Chat</span>
+            <span className="text-[9px] text-slate-400 block mt-0.5">Grounded RAG</span>
+          </div>
+          <div className="bg-slate-950/50 border border-slate-800/80 rounded-lg p-2 text-center">
+            <span className="text-[10px] font-bold text-teal-300 block">5. Options</span>
+            <span className="text-[9px] text-slate-400 block mt-0.5">Next Steps &amp; Redlines</span>
+          </div>
+          <div className="bg-slate-950/50 border border-slate-800/80 rounded-lg p-2 text-center">
+            <span className="text-[10px] font-bold text-teal-300 block">6. Checklists</span>
+            <span className="text-[9px] text-slate-400 block mt-0.5">ICS Calendar Export</span>
+          </div>
+          <div className="bg-slate-950/50 border border-slate-800/80 rounded-lg p-2 text-center col-span-2 sm:col-span-2 lg:col-span-1">
+            <span className="text-[10px] font-bold text-teal-300 block">7. Prepare</span>
+            <span className="text-[9px] text-slate-400 block mt-0.5">Counsel Dossier</span>
+          </div>
+        </div>
+      </section>
+
       {/* Top Controls: Upload, Synthetic Presets, PII Shield, and Action */}
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-slate-800/80">

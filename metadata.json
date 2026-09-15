@@ -1,6 +1,6 @@
 {
   "name": "ClarifyLex AI",
-  "description": "AI-powered legal document comprehension, risk analysis, and contract assistance platform for non-lawyers.",
+  "description": "GenAI-powered solution that makes legal information and basic legal assistance more accessible by helping users understand, compare, and navigate legal documents and information.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

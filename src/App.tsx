@@ -101,34 +101,42 @@ export function App() {
       {/* 4. Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-6 sm:py-8">
         {activeTab === 'analyzer' && (
-          <DocumentAnalyzer
-            currentAnalysis={currentAnalysis}
-            onAnalysisUpdate={(newAnalysis) => setCurrentAnalysis(newAnalysis)}
-            settings={settings}
-            onSwitchToComparator={() => setActiveTab('comparator')}
-          />
+          <div id="view-analyzer" role="tabpanel" aria-labelledby="tab-analyzer" tabIndex={0} className="focus:outline-none">
+            <DocumentAnalyzer
+              currentAnalysis={currentAnalysis}
+              onAnalysisUpdate={(newAnalysis) => setCurrentAnalysis(newAnalysis)}
+              settings={settings}
+              onSwitchToComparator={() => setActiveTab('comparator')}
+            />
+          </div>
         )}
 
         {activeTab === 'comparator' && (
-          <ContractComparator settings={settings} />
+          <div id="view-comparator" role="tabpanel" aria-labelledby="tab-comparator" tabIndex={0} className="focus:outline-none">
+            <ContractComparator settings={settings} />
+          </div>
         )}
 
         {activeTab === 'chat' && (
-          <DocumentChat
-            currentAnalysis={currentAnalysis}
-            settings={settings}
-            onSelectClauseId={() => {
-              setActiveTab('analyzer');
-            }}
-            onNavigateToAnalyzer={() => setActiveTab('analyzer')}
-          />
+          <div id="view-chat" role="tabpanel" aria-labelledby="tab-chat" tabIndex={0} className="focus:outline-none">
+            <DocumentChat
+              currentAnalysis={currentAnalysis}
+              settings={settings}
+              onSelectClauseId={() => {
+                setActiveTab('analyzer');
+              }}
+              onNavigateToAnalyzer={() => setActiveTab('analyzer')}
+            />
+          </div>
         )}
 
         {activeTab === 'briefing' && (
-          <ActionPackDossier
-            currentAnalysis={currentAnalysis}
-            onNavigateToAnalyzer={() => setActiveTab('analyzer')}
-          />
+          <div id="view-briefing" role="tabpanel" aria-labelledby="tab-briefing" tabIndex={0} className="focus:outline-none">
+            <ActionPackDossier
+              currentAnalysis={currentAnalysis}
+              onNavigateToAnalyzer={() => setActiveTab('analyzer')}
+            />
+          </div>
         )}
       </main>
 
@@ -137,9 +145,11 @@ export function App() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <span className="font-extrabold text-white">ClarifyLex AI</span>
+            <span className="text-slate-500">&bull;</span>
+            <span className="text-slate-400">Accessible Legal Document Comprehension</span>
           </div>
           <p className="text-[11px] text-slate-500 max-w-lg">
-            ClarifyLex AI is an educational legal comprehension tool, not formal legal counsel. Client-side PII sanitization active.
+            GenAI assistance tool to help users understand, compare, and navigate legal documents. Not formal legal advice. Client-side PII sanitization active.
           </p>
         </div>
       </footer>
