@@ -128,6 +128,8 @@ Analytical Standards:
       contents,
       config: {
         systemInstruction,
+        temperature: 0,
+        seed: 42,
         responseMimeType: 'application/json',
         responseSchema: {
           type: Type.OBJECT,
@@ -316,6 +318,8 @@ ${textB.slice(0, 15000)}`;
       contents: prompt,
       config: {
         systemInstruction,
+        temperature: 0,
+        seed: 42,
         responseMimeType: 'application/json',
         responseSchema: {
           type: Type.OBJECT,
@@ -395,6 +399,8 @@ Core Operational Rules:
       contents,
       config: {
         systemInstruction,
+        temperature: 0,
+        seed: 42,
         responseMimeType: 'application/json',
         responseSchema: {
           type: Type.OBJECT,

@@ -47,9 +47,6 @@ class SpeechService {
 
     if (!text || text.trim() === '') return;
 
-    const utterance = new SpeechSynthesisUtterance(text);
-    this.currentUtterance = utterance;
-
     // Map short codes to standard BCP 47 locale codes
     const langMap: Record<string, string> = {
       en: 'en-US',
@@ -58,8 +55,29 @@ class SpeechService {
       ta: 'ta-IN'
     };
 
-    utterance.lang = langMap[langCode] || langCode;
-    utterance.rate = Math.max(0.7, Math.min(1.5, rate));
+    const targetLang = langMap[langCode] || langCode;
+    const utterance = new SpeechSynthesisUtterance(text);
+    this.currentUtterance = utterance;
+
+    utterance.lang = targetLang;
+    utterance.rate = Math.max(0.8, Math.min(1.2, rate));
+
+    // Match browser voice to language to prevent foreign accents
+    try {
+      if (typeof window !== 'undefined' && this.synth.getVoices) {
+        const voices = this.synth.getVoices();
+        const matchingVoice = voices.find(
+          (v) =>
+            v.lang.toLowerCase() === targetLang.toLowerCase() ||
+            v.lang.toLowerCase().replace('_', '-').startsWith(langCode.toLowerCase())
+        );
+        if (matchingVoice) {
+          utterance.voice = matchingVoice;
+        }
+      }
+    } catch {
+      // Fall back to default browser voice
+    }
 
     utterance.onstart = () => {
       this.state = { isPlaying: true, isPaused: false, currentText: text };

@@ -9,8 +9,27 @@ import {
 } from '../types';
 import { redactPII } from '../utils/redactor';
 import { compileRiskBreakdown, evaluateClauseRisk } from '../utils/riskScorer';
-import { detectLegalDocumentType, extractDocumentMetadata } from '../utils/fileExtractor';
+import { detectLegalDocumentType, extractDocumentMetadata, repairSpacedLetters } from '../utils/fileExtractor';
 import { SAMPLE_DOCUMENTS } from '../data/sampleDocuments';
+
+/**
+ * Deterministic analysis memory cache to ensure that re-analyzing the exact same document
+ * 2, 10, or 100+ times returns the identical score, risk dimensions, and clauses without drift.
+ */
+const documentAnalysisMemoryCache = new Map<string, DocumentAnalysisResult>();
+
+/**
+ * Computes an invariant deterministic fingerprint for a document text & title
+ */
+export function computeDocumentFingerprint(text: string, title: string = ''): string {
+  const normalized = `${(title || '').trim().toLowerCase()}:::${(text || '').trim().replace(/\s+/g, ' ')}`;
+  let hash = 5381;
+  for (let i = 0; i < normalized.length; i++) {
+    hash = ((hash << 5) + hash) + normalized.charCodeAt(i);
+    hash |= 0;
+  }
+  return `doc-fp-${Math.abs(hash)}`;
+}
 
 export interface ServerConfigStatus {
   hasGeminiKey: boolean;
@@ -192,7 +211,8 @@ async function executeDirectClientGeminiAnalysis(
           systemInstruction: { parts: [{ text: SYSTEM_LEGAL_INSTRUCTION }] },
           generationConfig: {
             responseMimeType: 'application/json',
-            temperature: 0.1
+            temperature: 0,
+            seed: 42
           }
         })
       });
@@ -217,10 +237,11 @@ async function executeDirectClientGeminiAnalysis(
 
 /**
  * Main legal document analysis pipeline
- * 1. PII Redaction (Client-side)
- * 2. Server API request to /api/analyze (using Gemini/Groq on serverless/container)
- * 3. Direct client Gemini API execution if serverless is unreachable
- * 4. Graceful fallback for matched library samples or explicit heuristic requests
+ * 1. Deterministic Content Cache check (Guarantees identical scores for 100+ re-uploads)
+ * 2. PII Redaction (Client-side)
+ * 3. Server API request to /api/analyze (using Gemini on serverless/container)
+ * 4. Direct client Gemini API execution if serverless is unreachable
+ * 5. Graceful fallback for heuristic requests
  */
 export async function analyzeLegalDocument(
   rawText: string,
@@ -229,12 +250,20 @@ export async function analyzeLegalDocument(
   pdfBase64?: string,
   allowHeuristicFallback: boolean = false
 ): Promise<DocumentAnalysisResult> {
-  // Check if rawText matches any sample preset directly
+  const docFingerprint = computeDocumentFingerprint(rawText, docTitle);
+
+  // Check deterministic memory cache first: guarantees identical scores across 100+ uploads
+  if (documentAnalysisMemoryCache.has(docFingerprint)) {
+    const cached = documentAnalysisMemoryCache.get(docFingerprint)!;
+    return {
+      ...cached,
+      analyzedAt: new Date().toISOString()
+    };
+  }
+
+  // Check if rawText matches any sample preset directly (strict full text match only to avoid false hijacking)
   const matchedSample = SAMPLE_DOCUMENTS.find(
-    (s) =>
-      s.rawText.trim() === rawText.trim() ||
-      (rawText.length > 50 && s.rawText.includes(rawText.slice(0, 80))) ||
-      rawText.includes(s.title)
+    (s) => s.rawText.trim() === rawText.trim()
   );
 
   if (matchedSample && !pdfBase64) {
@@ -248,7 +277,7 @@ export async function analyzeLegalDocument(
         compileRiskBreakdown(sampleAnalysis.clauses, finalDocType).typeDimensions
     };
 
-    return {
+    const sampleResult: DocumentAnalysisResult = {
       ...sampleAnalysis,
       documentTitle: docTitle || matchedSample.title,
       documentType: finalDocType,
@@ -261,6 +290,9 @@ export async function analyzeLegalDocument(
       analyzedAt: new Date().toISOString(),
       isHeuristicFallback: false
     };
+
+    documentAnalysisMemoryCache.set(docFingerprint, sampleResult);
+    return sampleResult;
   }
 
   // 1. Client-Side PII Redaction
@@ -317,7 +349,7 @@ export async function analyzeLegalDocument(
             ? data.clauses.map((c: any) => `${c.sectionNumber || ''} ${c.title || ''}\n${c.originalText || ''}`).join('\n\n')
             : rawText);
 
-        return {
+        const serverResult: DocumentAnalysisResult = {
           ...data,
           documentType: finalDocType,
           documentTypeMetadata: data.documentTypeMetadata || typeMetadata,
@@ -330,6 +362,9 @@ export async function analyzeLegalDocument(
           analyzedAt: new Date().toISOString(),
           isHeuristicFallback: false
         };
+
+        documentAnalysisMemoryCache.set(docFingerprint, serverResult);
+        return serverResult;
       }
     }
   } catch (err) {
@@ -366,7 +401,7 @@ export async function analyzeLegalDocument(
             ? directData.clauses.map((c: any) => `${c.sectionNumber || ''} ${c.title || ''}\n${c.originalText || ''}`).join('\n\n')
             : rawText);
 
-        return {
+        const directResult: DocumentAnalysisResult = {
           ...directData,
           documentId: `doc-${Date.now()}`,
           documentTitle: docTitle || directData.documentTitle || 'Analyzed Legal Document',
@@ -381,6 +416,9 @@ export async function analyzeLegalDocument(
           analyzedAt: new Date().toISOString(),
           isHeuristicFallback: false
         };
+
+        documentAnalysisMemoryCache.set(docFingerprint, directResult);
+        return directResult;
       }
     } catch (directErr) {
       console.error('Direct client Gemini analysis failed:', directErr);
@@ -395,7 +433,7 @@ export async function analyzeLegalDocument(
   }
 
   // Fallback heuristic legal engine (only if explicitly opted in)
-  return generateHeuristicAnalysis(
+  const heuristicResult = generateHeuristicAnalysis(
     rawText,
     piiResult.redactedText,
     docTitle,
@@ -404,6 +442,114 @@ export async function analyzeLegalDocument(
     typeDetection.type,
     typeMetadata
   );
+
+  documentAnalysisMemoryCache.set(docFingerprint, heuristicResult);
+  return heuristicResult;
+}
+
+/**
+ * Synthesizes clear, articulate plain English, executive summaries, authentic multilingual translations,
+ * and jurisdiction-specific attorney questions for heuristic analysis fallback.
+ */
+function synthesizeClauseProfile(title: string, text: string, category: string, sectionNumber: string) {
+  const t = `${title} ${text}`.toLowerCase();
+
+  if (/rent|tenant|lease|premises|occupan|landlord/i.test(t)) {
+    return {
+      plain: 'This clause establishes mandatory rental payment terms, utility commitments, and lawful occupancy boundaries for the leased premises.',
+      summary: `Defines payment schedules and occupancy maintenance covenants under ${sectionNumber}.`,
+      hi: 'यह खंड पट्टा परिसर के किराए के भुगतान और कानूनी उपयोग की शर्तों को निर्धारित करता है।',
+      es: 'Esta cláusula establece los términos de pago del alquiler y las condiciones de ocupación legal del inmueble.',
+      ta: 'இந்த பிரிவு வாடகை செலுத்துதல் மற்றும் வளாகத்தை சட்டப்பூர்வமாக பயன்படுத்துவதற்கான நிபந்தனைகளை குறிப்பிடுகிறது.',
+      lawyerQ: 'What are the statutory notice requirements for rent escalation and security deposit refund under local tenancy laws?'
+    };
+  }
+
+  if (/power of attorney|attorney-in-fact|appoint|agent/i.test(t)) {
+    return {
+      plain: "This provision formally authorizes a designated attorney or representative to act and sign legally binding instruments on the principal's behalf.",
+      summary: `Delegates representative authority and defines attorney powers under ${sectionNumber}.`,
+      hi: 'यह खंड मुख्य व्यक्ति की ओर से कानूनी दस्तावेज निष्पादित करने के लिए अधिकृत प्रतिनिधि को अधिकार देता है।',
+      es: 'Esta disposición otorga poderes legales formales a un representante para actuar en nombre del otorgante.',
+      ta: 'இந்த பிரிவு சார்பாக சட்டப்பூர்வ ஆவணங்களை கையொப்பமிடுவதற்கான அதிகாரத்தை பிரதிநிதிக்கு வழங்குகிறது.',
+      lawyerQ: 'Is this power of attorney revocable, and does it require mandatory registration with the jurisdictional registrar?'
+    };
+  }
+
+  if (/terminat|expir|cancel|notice to vacate/i.test(t)) {
+    return {
+      plain: 'Specifies the precise conditions, notice windows, and cure periods required before either party can legally terminate this agreement.',
+      summary: `Governs notice periods, default remedies, and termination protocols under ${sectionNumber}.`,
+      hi: 'यह खंड अनुबंध समाप्त करने के लिए आवश्यक अग्रिम नोटिस अवधि और शर्तों को स्पष्ट करता है।',
+      es: 'Esta cláusula especifica los plazos de preaviso por escrito y los motivos válidos para rescindir el acuerdo.',
+      ta: 'இந்த பிரிவு ஒப்பந்தத்தை முடிவுக்கு கொண்டுவருவதற்கான கால அவகாசம் மற்றும் நிபந்தனைகளை குறிப்பிடுகிறது.',
+      lawyerQ: 'Are the notice timelines and unilateral termination rights enforceable without penalty under relevant contract jurisprudence?'
+    };
+  }
+
+  if (/indemn|harmless|defend/i.test(t)) {
+    return {
+      plain: 'This clause requires you to financially compensate and legally defend the counterparty against third-party lawsuits and damages.',
+      summary: `Allocates defense obligations and third-party financial liabilities under ${sectionNumber}.`,
+      hi: 'यह खंड तीसरे पक्ष के दावों और कानूनी खर्चों के लिए वित्तीय भरपाई करने की जिम्मेदारी डालता है।',
+      es: 'Esta cláusula impone el deber de indemnizar y defender judicialmente a la otra parte ante reclamos de terceros.',
+      ta: 'இந்த பிரிவு மூன்றாம் தரப்பு வழக்குகளுக்கு இழப்பீடு வழங்குவதற்கும் சட்டப்பூர்வ பாதுகாப்பு அளிப்பதற்கும் கடமைப்படுத்துகிறது.',
+      lawyerQ: 'Can we introduce a financial liability cap and exclude indirect or consequential damages from the indemnity scope?'
+    };
+  }
+
+  if (/arbitrat|dispute|jurisdiction|governing law/i.test(t)) {
+    return {
+      plain: 'Mandates the dispute resolution forum, determining whether conflicts are settled through binding arbitration or specific local courts.',
+      summary: `Establishes forum jurisdiction and procedural dispute rules under ${sectionNumber}.`,
+      hi: 'यह खंड विवादों के समाधान के लिए मध्यस्थता मंच और न्यायालय के क्षेत्राधिकार को निर्धारित करता है।',
+      es: 'Esta cláusula designa el tribunal competente y las reglas de arbitraje para resolver cualquier controversia legal.',
+      ta: 'இந்த பிரிவு தகராறுகளை தீர்ப்பதற்கான மத்தியஸ்த மன்றம் மற்றும் நீதிமன்ற அதிகார வரம்பை நிர்ணயிக்கிறது.',
+      lawyerQ: 'Is the arbitration seat favorable, and are interim injunctive remedies preserved before competent civil courts?'
+    };
+  }
+
+  if (/non-compete|restraint|solicit|client/i.test(t)) {
+    return {
+      plain: 'Imposes post-contractual commercial restraints prohibiting you from contacting clients or competing in the same business sector.',
+      summary: `Restricts competitive business operations and client solicitation under ${sectionNumber}.`,
+      hi: 'यह खंड व्यापारिक प्रतिबंध लगाता है; भारतीय अनुबंध अधिनियम की धारा 27 के तहत ऐसे उप-अनुबंध अमान्य होते हैं।',
+      es: 'Esta cláusula impone restricciones comerciales y de no competencia tras la finalización de la relación.',
+      ta: 'இந்த பிரிவு வாடிக்கையாளர் தொடர்பு மற்றும் வணிகப் போட்டியை கட்டுப்படுத்துகிறது.',
+      lawyerQ: 'Does this restrictive covenant violate statutory restraint of trade provisions (e.g., Section 27 Indian Contract Act)?'
+    };
+  }
+
+  if (/confidential|proprietary|secret/i.test(t)) {
+    return {
+      plain: 'Obligates the parties to maintain strict confidentiality over proprietary data, trade secrets, and non-public commercial information.',
+      summary: `Protects non-public commercial information and trade secrets under ${sectionNumber}.`,
+      hi: 'यह खंड गोपनीय जानकारी और व्यावसायिक रहस्यों की सुरक्षा के लिए कानूनी कर्तव्य स्थापित करता है।',
+      es: 'Esta disposición exige confidencialidad absoluta sobre datos comerciales y secretos industriales.',
+      ta: 'இந்த பிரிவு ரகசிய தகவல்கள் மற்றும் வணிக ரகசியங்களை பாதுகாப்பதற்கான கடமையை உருவாக்குகிறது.',
+      lawyerQ: 'Are standard exclusions for subpoenaed disclosures, public knowledge, or prior possession included?'
+    };
+  }
+
+  if (/liquidated|penalty|forfeit/i.test(t)) {
+    return {
+      plain: 'Specifies fixed monetary sums or forfeiture penalties payable upon default or failure to fulfill contractual milestones.',
+      summary: `Stipulates predetermined liquidated damage calculations under ${sectionNumber}.`,
+      hi: 'यह खंड अनुबंध के उल्लंघन की स्थिति में पूर्व-निर्धारित क्षतिपूर्ति या जुर्माने की गणना करता है।',
+      es: 'Esta cláusula fija penalizaciones económicas predeterminadas en caso de incumplimiento de obligaciones.',
+      ta: 'இந்த பிரிவு ஒப்பந்த மீறலுக்கான நிலையான இழப்பீட்டு தொகையை நிர்ணயிக்கிறது.',
+      lawyerQ: 'Under Section 74 of the Contract Act, is this sum considered a reasonable estimate of loss or an unenforceable penalty?'
+    };
+  }
+
+  return {
+    plain: `This provision establishes binding operational duties, standards of performance, and mutual legal protections governing ${title}.`,
+    summary: `Defines statutory obligations and governing performance standards under ${sectionNumber}.`,
+    hi: `यह खंड (${title}) पक्षों के बीच कानूनी जिम्मेदारियों और परिचालन मानकों को निर्धारित करता है।`,
+    es: `Esta cláusula (${title}) define obligaciones contractuales y estándares de cumplimiento legal.`,
+    ta: `இந்த பிரிவு (${title}) சட்டபூர்வ கடமைகளையும் செயல்பாட்டு விதிகளையும் வரையறுக்கிறது.`,
+    lawyerQ: `Does the wording in ${sectionNumber} (${title}) conform with standard industry practices and protective covenants?`
+  };
 }
 
 /**
@@ -421,30 +567,42 @@ function generateHeuristicAnalysis(
   const finalDocType = detectedType || detectLegalDocumentType(rawText, docTitle).type;
   const metadata = providedMetadata || extractDocumentMetadata(rawText, finalDocType);
 
+  const cleanedRedacted = repairSpacedLetters(redactedText);
+  const cleanedRaw = repairSpacedLetters(rawText);
+
   // Intelligent segmentation based on document structure
   let chunks: string[] = [];
   if (finalDocType === LegalDocumentType.PATENT) {
-    chunks = redactedText
+    chunks = cleanedRedacted
       .split(/(?=(?:Claim\s+\d+|What is claimed is|\d+\.\s+FIELD OF THE INVENTION|\d+\.\s+BACKGROUND|\d+\.\s+SUMMARY|\d+\.\s+CLAIMS|\d+\.\s+ASSIGNMENT|\d+\.\s+STATUTORY))/i)
       .map((s) => s.trim())
       .filter((s) => s.length > 30);
   } else if (finalDocType === LegalDocumentType.WILL) {
-    chunks = redactedText
+    chunks = cleanedRedacted
       .split(/(?=(?:ARTICLE\s+[IVXLCDM]+|I,\s+[A-Z]|ATTESTATION CLAUSE|Witness \d+:))/i)
       .map((s) => s.trim())
       .filter((s) => s.length > 30);
   } else if (finalDocType === LegalDocumentType.INCORPORATION) {
-    chunks = redactedText
+    chunks = cleanedRedacted
       .split(/(?=(?:FIRST:|SECOND:|THIRD:|FOURTH:|FIFTH:|SIXTH:|SEVENTH:|EIGHTH:|NINTH:|TENTH:|ARTICLE\s+[IVXLCDM]+))/i)
       .map((s) => s.trim())
       .filter((s) => s.length > 30);
   }
 
   if (chunks.length < 2) {
-    chunks = redactedText
-      .split(/\n\s*\n/)
-      .map((p) => p.trim())
-      .filter((p) => p.length > 40);
+    const numberedSplit = cleanedRedacted
+      .split(/(?=\n(?:\d+\.|\bClause\s+\d+|\bSection\s+\d+|\bArticle\s+\d+|\bWHEREAS\b|\bNOW THIS DEED\b|\bSCHEDULE\b))/i)
+      .map((s) => s.trim())
+      .filter((s) => s.length > 40);
+
+    if (numberedSplit.length >= 2) {
+      chunks = numberedSplit;
+    } else {
+      chunks = cleanedRedacted
+        .split(/\n\s*\n/)
+        .map((p) => p.trim())
+        .filter((p) => p.length > 40);
+    }
   }
 
   const clauses = chunks.map((p, idx) => {
@@ -521,6 +679,8 @@ function generateHeuristicAnalysis(
       else if (/patent|copyright|intellectual property|invention/i.test(p)) category = 'intellectual_property';
     }
 
+    const profile = synthesizeClauseProfile(title, p, category, sectionNumber);
+
     return {
       id: `heur-${idx + 1}`,
       sectionNumber,
@@ -530,8 +690,8 @@ function generateHeuristicAnalysis(
       riskLevel: riskEval.level,
       riskScore: riskEval.score,
       originalText: p,
-      plainEnglishText: `In simple terms: ${p.slice(0, 160)}... This provision establishes legal duties and operational boundaries.`,
-      executiveSummary: `Summary of ${title}: Specifies terms, rights, and potential liabilities governing the relationship.`,
+      plainEnglishText: profile.plain,
+      executiveSummary: profile.summary,
       riskReasons: riskEval.flags.length > 0 ? riskEval.flags : ['Standard legal wording evaluated against domain-specific patterns'],
       impactOnUser: riskEval.level === 'high'
         ? 'High exposure: You bear substantial responsibility or risk unexpected legal consequences under this clause.'
@@ -539,12 +699,12 @@ function generateHeuristicAnalysis(
       suggestedAction: riskEval.level === 'high'
         ? 'Request clarification and propose protective amendments with legal counsel.'
         : 'Review carefully against your project scope.',
-      questionForLawyer: `Can you review whether the wording in ${sectionNumber} (${title}) aligns with standard industry practice in our jurisdiction?`,
+      questionForLawyer: profile.lawyerQ,
       deadlinesOrNotices: /notice of at least (\d+)\s*days/i.exec(p)?.[0],
       translations: {
-        es: `Resumen en español: Esta cláusula (${title}) define obligaciones y posibles responsabilidades legales.`,
-        hi: `सरल हिंदी सारांश: यह खंड (${title}) पक्षों के बीच कानूनी जिम्मेदारियों और दायित्वों को निर्धारित करता है।`,
-        ta: `எளிய தமிழ் சுருக்கம்: இந்த பிரிவு (${title}) சட்டபூர்வ கடமைகளையும் பொறுப்புகளையும் வரையறுக்கிறது.`
+        es: profile.es,
+        hi: profile.hi,
+        ta: profile.ta
       }
     };
   });
@@ -571,8 +731,9 @@ function generateHeuristicAnalysis(
     documentType: finalDocType,
     documentTypeMetadata: metadata,
     wordCount: rawText.split(/\s+/).filter(Boolean).length,
-    rawText,
-    redactedText,
+    rawText: cleanedRaw,
+    redactedText: cleanedRedacted,
+    extractedDocumentText: cleanedRaw,
     piiRedacted,
     redactionMap,
     riskBreakdown,
@@ -853,7 +1014,11 @@ Provide an authoritative, clear response citing exact clauses, sections, or stat
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: { responseMimeType: 'application/json' }
+            generationConfig: {
+              responseMimeType: 'application/json',
+              temperature: 0,
+              seed: 42
+            }
           })
         }
       );
@@ -877,26 +1042,67 @@ Provide an authoritative, clear response citing exact clauses, sections, or stat
     }
   }
 
-  // Grounded local response with citation detection
-  const qLower = question.toLowerCase();
-  let answer = '';
-  const citations: any[] = [];
+  // Intelligent Grounded Local RAG when offline or without API key
+  const cleanedDoc = repairSpacedLetters(documentText);
+  const qTerms = question
+    .toLowerCase()
+    .replace(/[^\w\s]/g, ' ')
+    .split(/\s+/)
+    .filter((w) => w.length > 2 && !['what', 'when', 'where', 'which', 'about', 'this', 'that', 'with', 'from', 'have', 'does', 'tell', 'show', 'explain'].includes(w));
 
-  if (qLower.includes('terminat') || qLower.includes('cancel') || qLower.includes('leave') || qLower.includes('quit')) {
-    answer = 'According to the document, termination terms are asymmetric: the counter-party holds immediate termination privileges upon electronic notice, whereas you are bound to a strict advance notice window (typically 60 to 90 days) requiring written delivery or certified mail.';
-    citations.push({ section: 'Section 6 / Termination', clauseId: 'c-5', excerpt: 'Termination & Immediate Notice provision' });
-  } else if (qLower.includes('non-compete') || qLower.includes('solicit') || qLower.includes('lock-in') || qLower.includes('client')) {
-    answer = 'Yes, the agreement contains restrictive post-engagement obligations. You are barred from soliciting or contracting with clients, vendors, or associates for up to 24 months post-termination, with substantial liquidated damages assessed per infraction.';
-    citations.push({ section: 'Section 5 / Non-Solicitation', clauseId: 'c-4', excerpt: 'Non-Solicitation & Liquidated Damages clause' });
-  } else if (qLower.includes('indemn') || qLower.includes('liabilit') || qLower.includes('sue') || qLower.includes('damage')) {
-    answer = 'The contract shifts liability heavily onto you under an uncapped indemnification provision. You are obligated to defend and hold harmless the counterparty for any third-party claims, legal fees, or intellectual property disputes, with no financial ceiling.';
-    citations.push({ section: 'Section 4 / Indemnification', clauseId: 'c-3', excerpt: 'Unlimited Indemnification provision' });
-  } else if (qLower.includes('ip') || qLower.includes('ownership') || qLower.includes('code') || qLower.includes('inventions')) {
-    answer = 'The intellectual property assignment is broadly drafted. It conveys all inventions and software code created during the engagement term, even if created on personal devices or outside standard working hours, alongside a worldwide waiver of moral rights.';
-    citations.push({ section: 'Section 3 / Intellectual Property', clauseId: 'c-2', excerpt: 'Intellectual Property & Moral Rights Waiver' });
+  const paragraphs = cleanedDoc
+    .split(/\n\s*\n/)
+    .map((p) => p.trim())
+    .filter((p) => p.length > 30);
+
+  let bestParagraph = '';
+  let bestScore = 0;
+  let bestIndex = 0;
+
+  paragraphs.forEach((p, idx) => {
+    const pLower = p.toLowerCase();
+    let score = 0;
+    for (const term of qTerms) {
+      if (pLower.includes(term)) {
+        score += 2;
+      }
+    }
+    if (score > bestScore) {
+      bestScore = score;
+      bestParagraph = p;
+      bestIndex = idx;
+    }
+  });
+
+  const citations: any[] = [];
+  let answer = '';
+
+  if (bestScore > 0 && bestParagraph) {
+    const headerMatch = bestParagraph.match(/^([0-9]+\.|\bSection\s+[0-9]+|\bArticle\s+[0-9]+|\bClause\s+[0-9]+)\s*([^\n.:]+)/i);
+    const sectionName = headerMatch ? `${headerMatch[1]} (${headerMatch[2].trim()})` : `Clause ${bestIndex + 1}`;
+    const cleanExcerpt = bestParagraph.slice(0, 180).replace(/\s+/g, ' ');
+
+    answer = `Based on the uploaded document text in **${sectionName}**:\n\n> "${cleanExcerpt}..."\n\nThis provision directly governs your inquiry regarding "${question}". It delineates the binding obligations and legal standards applicable to the parties under this instrument.`;
+    citations.push({
+      section: sectionName,
+      clauseId: `c-${bestIndex + 1}`,
+      excerpt: cleanExcerpt
+    });
   } else {
-    answer = `Based on the uploaded document text, this agreement defines specific legal obligations between the parties. Review the relevant sections closely, particularly those governing notice periods, unilateral discretion, and dispute resolution venues.`;
-    citations.push({ section: 'Section 1 / General Provisions', clauseId: 'c-1', excerpt: 'Operational guidelines and recitals' });
+    const qLower = question.toLowerCase();
+    if (qLower.includes('terminat') || qLower.includes('cancel') || qLower.includes('leave') || qLower.includes('quit')) {
+      answer = 'According to the document covenants, termination terms typically mandate formal advance written notice (standard 30 to 90 days) or require specific default cure periods before unilateral cancellation can be exercised.';
+      citations.push({ section: 'Termination & Default', clauseId: 'c-term', excerpt: 'Termination and advance written notice provisions' });
+    } else if (qLower.includes('non-compete') || qLower.includes('solicit') || qLower.includes('lock-in') || qLower.includes('client')) {
+      answer = 'The agreement outlines restrictive covenants governing client solicitation and competitive operations. Note that under Section 27 of the Indian Contract Act 1872, post-contract non-compete covenants are legally unenforceable in Indian jurisdiction.';
+      citations.push({ section: 'Restrictive Covenants', clauseId: 'c-restraint', excerpt: 'Non-solicitation and post-termination restrictions' });
+    } else if (qLower.includes('indemn') || qLower.includes('liabilit') || qLower.includes('sue') || qLower.includes('damage')) {
+      answer = 'The liability framework requires careful scrutiny: indemnification clauses impose duties to defend and hold the other party harmless against third-party claims, legal expenses, and operational defaults.';
+      citations.push({ section: 'Liability & Indemnification', clauseId: 'c-indemn', excerpt: 'Indemnification and legal defense obligations' });
+    } else {
+      answer = `ClarifyLex AI has cross-referenced your query against the document. The agreement establishes formal legal covenants and operational terms between the parties. Review the highlighted clauses in the Clause Analyzer and consultation dossier for jurisdiction-specific obligations.`;
+      citations.push({ section: 'General Provisions', clauseId: 'c-1', excerpt: 'Operational covenants and recitals' });
+    }
   }
 
   return {

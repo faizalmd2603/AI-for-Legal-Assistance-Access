@@ -46,12 +46,104 @@ export function arrayBufferToBase64(buffer: ArrayBuffer): string {
 }
 
 /**
- * Robust in-browser PDF text extractor using pdfjs-dist
+ * Repairs spaced-out text where individual letters are separated by spaces
+ * (e.g. "T h i s   d o c u m e n t" -> "This document", "S A M P L E   D R A F T S" -> "SAMPLE DRAFTS")
+ */
+export function repairSpacedLetters(text: string): string {
+  if (!text) return '';
+
+  let cleaned = text.replace(/\r\n/g, '\n').replace(/\t/g, '  ');
+  const lines = cleaned.split('\n');
+
+  const processed = lines.map((line) => {
+    // Check if line contains sequences of single letters separated by single space
+    const hasSpacedChars = /([A-Za-z0-9]\s){2,}[A-Za-z0-9]/.test(line);
+    if (!hasSpacedChars) return line;
+
+    // If there are multi-space word boundaries (2 or more spaces between words)
+    if (/\s{2,}/.test(line)) {
+      return line
+        .split(/\s{2,}/)
+        .map((word) => {
+          if (/^([A-Za-z0-9]\s)+[A-Za-z0-9]$/.test(word.trim())) {
+            return word.replace(/\s+/g, '');
+          }
+          return word.replace(/([A-Za-z0-9])\s+(?=[A-Za-z0-9])/g, '$1');
+        })
+        .join(' ');
+    } else {
+      // Single spaces everywhere; check if high ratio of single letters
+      const tokens = line.trim().split(/\s+/);
+      const singleLetterTokens = tokens.filter((t) => t.length === 1 && /[A-Za-z0-9]/.test(t));
+      if (tokens.length >= 4 && singleLetterTokens.length / tokens.length >= 0.5) {
+        return line.replace(/([A-Za-z0-9])\s(?=[A-Za-z0-9])/g, '$1');
+      }
+      return line;
+    }
+  });
+
+  return processed
+    .join('\n')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\s+([,.:;?!])/g, '$1');
+}
+
+/**
+ * Fallback stream parser to extract text strings directly from raw PDF ArrayBuffer
+ */
+export function extractTextFromPdfBufferDirect(arrayBuffer: ArrayBuffer): string {
+  try {
+    const bytes = new Uint8Array(arrayBuffer);
+    const decoder = new TextDecoder('latin1', { fatal: false });
+    const raw = decoder.decode(bytes);
+    const textPieces: string[] = [];
+
+    // Match (literal string) Tj
+    const tjRegex = /\(([^)]+)\)\s*Tj/g;
+    let m: RegExpExecArray | null;
+    while ((m = tjRegex.exec(raw)) !== null) {
+      if (m[1] && m[1].length > 0 && !isPdfBytecode(m[1])) {
+        textPieces.push(m[1]);
+      }
+    }
+
+    // Match [(array of strings)] TJ
+    const tjArrayRegex = /\[([^\]]+)\]\s*TJ/g;
+    while ((m = tjArrayRegex.exec(raw)) !== null) {
+      const inner = m[1];
+      const parts = inner.match(/\(([^)]+)\)/g);
+      if (parts) {
+        const joined = parts.map((p) => p.slice(1, -1)).join('');
+        if (joined.length > 0 && !isPdfBytecode(joined)) {
+          textPieces.push(joined);
+        }
+      }
+    }
+
+    if (textPieces.length > 5) {
+      return cleanExtractedText(textPieces.join(' '));
+    }
+  } catch (e) {
+    console.warn('Direct PDF buffer text parsing error:', e);
+  }
+  return '';
+}
+
+/**
+ * Robust in-browser PDF text extractor using pdfjs-dist with coordinate-aware layout preservation
  */
 export async function extractPdfTextWithPdfJs(arrayBuffer: ArrayBuffer): Promise<string> {
   try {
     if (typeof window !== 'undefined' && !pdfjsLib.GlobalWorkerOptions.workerSrc) {
-      pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version || '6.3.289'}/build/pdf.worker.min.mjs`;
+      // Use standard CDN or bundle path
+      try {
+        pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
+          'pdfjs-dist/build/pdf.worker.min.mjs',
+          import.meta.url
+        ).toString();
+      } catch {
+        pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version || '6.3.289'}/build/pdf.worker.min.mjs`;
+      }
     }
 
     const loadingTask = pdfjsLib.getDocument({
@@ -68,11 +160,44 @@ export async function extractPdfTextWithPdfJs(arrayBuffer: ArrayBuffer): Promise
       try {
         const page = await pdfDoc.getPage(i);
         const textContent = await page.getTextContent();
-        const pageStrings = textContent.items
-          .map((item: any) => ('str' in item ? item.str : ''))
-          .filter((s: string) => s.trim().length > 0);
-        if (pageStrings.length > 0) {
-          pageTexts.push(pageStrings.join(' '));
+        let pageStr = '';
+        let lastX = -1;
+        let lastY = -1;
+        let lastWidth = 0;
+
+        for (const rawItem of textContent.items) {
+          const item = rawItem as any;
+          if (!item.str && !item.hasEOL) continue;
+
+          const x = item.transform ? item.transform[4] : 0;
+          const y = item.transform ? item.transform[5] : 0;
+          const width = item.width || 0;
+
+          if (lastY !== -1) {
+            // Check if line changed (y coordinate changed by more than 4 points)
+            if (item.hasEOL || Math.abs(y - lastY) > 5) {
+              pageStr += '\n';
+            } else {
+              // Same horizontal line: check gap between items
+              const gap = x - (lastX + lastWidth);
+              if (gap > 2.5) {
+                // Definite word break
+                pageStr += '  ';
+              } else if (gap > 0.8) {
+                pageStr += ' ';
+              }
+              // gap <= 0.8: contiguous characters within the same word, no space added!
+            }
+          }
+
+          pageStr += item.str;
+          lastX = x;
+          lastY = y;
+          lastWidth = width;
+        }
+
+        if (pageStr.trim().length > 0) {
+          pageTexts.push(pageStr.trim());
         }
       } catch (pageErr) {
         console.warn(`Error reading page ${i}:`, pageErr);
@@ -80,10 +205,21 @@ export async function extractPdfTextWithPdfJs(arrayBuffer: ArrayBuffer): Promise
     }
 
     const fullText = pageTexts.join('\n\n');
-    return cleanExtractedText(fullText);
+    const cleaned = cleanExtractedText(fullText);
+    if (cleaned.length > 50 && countWords(cleaned) >= 15) {
+      return cleaned;
+    }
+
+    // Direct buffer parse fallback if PDF.js produced negligible text
+    const directText = extractTextFromPdfBufferDirect(arrayBuffer);
+    if (directText.length > cleaned.length) {
+      return directText;
+    }
+
+    return cleaned;
   } catch (err) {
-    console.warn('PDF.js text extraction error:', err);
-    return '';
+    console.warn('PDF.js text extraction error, falling back to direct stream extraction:', err);
+    return extractTextFromPdfBufferDirect(arrayBuffer);
   }
 }
 
@@ -597,12 +733,15 @@ export async function extractTextFromFile(file: File): Promise<ExtractedDocument
 }
 
 export function cleanExtractedText(text: string): string {
-  return text
+  if (!text) return '';
+  const normalized = text
     .replace(/\r\n/g, '\n')
     .replace(/\t/g, '  ')
     .replace(/[ \t]+/g, ' ')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
+
+  return repairSpacedLetters(normalized);
 }
 
 export function countWords(text: string): number {

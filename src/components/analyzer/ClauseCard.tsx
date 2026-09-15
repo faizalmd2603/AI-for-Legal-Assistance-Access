@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ClauseAnalysis, ReadingLevel } from '../../types';
 import { speechService, SpeechState } from '../../services/speechService';
+import { repairSpacedLetters } from '../../utils/fileExtractor';
 import {
   Volume2,
   VolumeX,
@@ -21,17 +22,26 @@ interface ClauseCardProps {
   onSelectClause: (clause: ClauseAnalysis) => void;
 }
 
-function sanitizeForSpeech(text: string): string {
+export function sanitizeForSpeech(text: string): string {
   if (!text) return '';
-  return text
-    .replace(/\[(?:Hindi|Spanish|Tamil):[^\]]+\]/gi, '')
+  // 1. Remove metadata tags, bracket prefixes, URLs, and PDF bytecodes
+  let cleaned = text
+    .replace(/\[(?:Hindi|Spanish|Tamil|Note|Document|Scanned)[^\]]*\]/gi, '')
     .replace(/%PDF[^\s]+/gi, '')
     .replace(/\/[A-Za-z0-9]+/g, ' ')
     .replace(/<<|>>/g, ' ')
-    .replace(/[*_#`~]/g, '')
-    .replace(/[^\w\s.,!?'"()-]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
+    .replace(/[*_#`~^{}[\]\\]/g, '')
+    .replace(/https?:\/\/\S+/gi, '');
+
+  // 2. Repair character-spaced letters (e.g. "T h i s   d o c u m e n t" -> "This document")
+  cleaned = repairSpacedLetters(cleaned);
+
+  // 3. Keep all Unicode letters, marks, numbers, whitespace, and basic punctuation
+  // This explicitly preserves Hindi (Devanagari), Tamil, Spanish accented vowels, and English
+  cleaned = cleaned.replace(/[^\p{L}\p{M}\p{N}\s.,!?'"()\-:;]/gu, ' ');
+
+  // 4. Normalize whitespace and trim
+  return cleaned.replace(/\s+/g, ' ').trim();
 }
 
 export function ClauseCard({
