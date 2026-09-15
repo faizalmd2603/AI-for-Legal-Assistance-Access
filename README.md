@@ -8,7 +8,7 @@
 [![Tailwind CSS v4](https://img.shields.io/badge/Tailwind_CSS-v4.1-38BDF8?style=for-the-badge&logo=tailwindcss&logoColor=white)](https://tailwindcss.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-teal.svg?style=for-the-badge)](LICENSE)
 
-> **ClarifyLex AI** is an AI-powered legal document comprehension, statutory risk intelligence, and contract negotiation co-pilot. It decodes complex, opaque legal agreements into plain language, benchmarks clauses against statutory frameworks and judicial precedents, highlights asymmetric liabilities, and equips non-lawyers with structured consultation dossiers for retained legal counsel.
+> **ClarifyLex AI** is an AI-powered legal document comprehension, statutory risk intelligence, and contract negotiation co-pilot. It decodes complex, opaque legal agreements into plain language, benchmarks covenants against Indian and international statutory regimes, and arms users with actionable redlines and attorney-optimized discovery dossiers.
 
 ---
 
@@ -16,8 +16,8 @@
 
 | Environment | Access Link | Description |
 | :--- | :--- | :--- |
-| 🚀 **Live Production App** | [**Launch ClarifyLex AI (Cloud Run)**](https://ais-pre-rjgjvvxwx2xtxf3b6bn3cy-487136188765.asia-east1.run.app) | Fully functional, cloud-hosted production instance with server-side Gemini AI processing. |
-| ⚡ **Vercel Deployment** | [**ClarifyLex on Vercel**](https://clarifylex-ai.vercel.app) | Vercel-optimized client & serverless deployment target. *(See [Vercel Setup](#-deploy-to-vercel) below to launch your own)* |
+| 🚀 **Live Production App** | [**Launch ClarifyLex AI (Cloud Run)**](https://ais-pre-rjgjvvxwx2xtxf3b6bn3cy-487136188765.asia-east1.run.app) | Fully functional, cloud-hosted production instance with serverless Gemini backend. |
+| ⚡ **Vercel Deployment** | [**ClarifyLex on Vercel**](https://clarifylex-ai.vercel.app) | Vercel-optimized client & serverless deployment target. *(See [Vercel Setup](#-deploy-to-vercel) below to learn how to deploy your own instance.)* |
 | 🛠️ **Dev Sandbox** | [**Development Sandbox**](https://ais-dev-rjgjvvxwx2xtxf3b6bn3cy-487136188765.asia-east1.run.app) | Live hot-reloading development preview environment. |
 
 *Zero-setup testing: You do not need an API key to evaluate the application. ClarifyLex AI includes an extensive library of precomputed synthetic legal documents for immediate, zero-latency testing.*
@@ -26,7 +26,7 @@
 
 ## 📌 Brief Overview
 
-Every day, individuals, freelance developers, startup founders, and small businesses sign dense legal agreements—employment bonds, non-disclosure agreements, data protection addenda, commercial leases, and software licenses—without understanding their hidden legal risks. Traditional legal counsel is prohibitively expensive, while generic consumer AI chatbots frequently hallucinate legal doctrines or fail to recognize statutory exclusions.
+Every day, individuals, freelance developers, startup founders, and small businesses sign dense legal agreements—employment bonds, non-disclosure agreements, data protection addenda, commercial leases, and SaaS terms. Most lack the resources to retain outside counsel and face a critical "access-to-justice" gap: they cannot afford to decode arcane legalese or validate compliance with governing statutes before affixing their signature.
 
 **ClarifyLex AI** bridges this critical access-to-justice gap:
 1. **Ingests & Pre-Screens**: Sanitizes documents locally using client-side pre-flight PII redaction to protect confidential client data.
@@ -34,6 +34,25 @@ Every day, individuals, freelance developers, startup founders, and small busine
 3. **Translates & Educates**: Provides clause-by-clause plain English explanations along with vernacular translations in **Hindi (हिन्दी)** and **Tamil (தமிழ்)**.
 4. **Validates Against Real Law**: Tests covenants against governing statutes (such as Section 27 of the Indian Contract Act, DPDPA 2023, RERA 2016, and BNS 2023) and landmark judicial rulings.
 5. **Arms the User**: Generates side-by-side contract diff comparisons, interactive citation-grounded RAG chat, and an **Action Pack Dossier** for consultation with real attorneys.
+
+---
+
+## 🔑 Getting Your Gemini API Key & Dual-Access Workflow
+
+**ClarifyLex AI offers flexible, zero-friction access:**
+
+- **Option 1: Enhanced Analysis with Gemini API Key** *(Recommended for comprehensive document review)*
+  - Obtain a free Gemini API key from [Google AI Studio](https://aistudio.google.com/).
+  - Upon uploading your document, ClarifyLex AI will prompt you to enter your API key in the designated field.
+  - With an active Gemini API key, you unlock **comprehensive end-to-end analysis**: full statutory cross-referencing, multilingual clause-by-clause explanations, semantic covenant risk synthesis, interactive RAG-powered legal chat, and an automated Attorney Action Pack dossier.
+  - Your API key remains secure—it is never stored or logged; all processing respects your privacy and confidentiality.
+
+- **Option 2: Instant Baseline Estimates Without API Key** *(Zero setup; no billing risk)*
+  - Simply upload your document and proceed without entering an API key.
+  - ClarifyLex AI instantly generates **heuristic risk scores, clause categorization, and precomputed sample analyses** using built-in statutory datasets and benchmarking libraries.
+  - Ideal for rapid initial assessments, portfolio screening, and low-stakes contract review.
+
+**Both pathways are fully supported and production-ready.** Choose whichever aligns with your workflow—ClarifyLex AI seamlessly transitions between offline benchmarking and AI-enhanced deep analysis.
 
 ---
 
@@ -88,11 +107,11 @@ Every day, individuals, freelance developers, startup founders, and small busine
 ### 6. 📚 Curated Synthetic Legal Document Library
 Pre-loaded with realistic, production-grade legal instruments across multiple jurisdictions:
 - **DPDPA 2023 Statutory Addendum**: Section 6 multilingual consent notices, Section 12 Data Principal statutory rights, 72-hour DPBI breach reporting, and ₹250 Crore penalty indemnities.
-- **Indian IT Employment & Service Bond**: 24-month non-compete (void under Sec 27 ICA 1872 per *Percept D'Mark v. Zaheer Khan*), ₹5,00,000 training bond penalty (Sec 74 ICA), and criminal breach of trust covenants (Sec 316 BNS 2023).
-- **RERA Real Estate Allotment Agreement**: Section 2(k) carpet area pricing, 70% escrow compliance, SBI MCLR + 2% delayed possession interest, and 5-year structural defect warranty under Section 14(3).
-- **Indian Patent Specification (2024 Amendment Rules)**: Hardware-anchored identity claims overcoming Section 3(k) computer programme per se bars per *Ferid Allani v. Union of India*, and Form 27 triennial commercial working statements.
-- **Indian Testamentary Will & Estate Disposition**: Coparcenary ancestral property vs self-acquired estate under Hindu Succession Act (*Vineeta Sharma v. Rakesh Sharma*), Section 63 two-witness attestation.
-- **Indian Shareholders' Agreement (Companies Act 2013)**: ROFR, Tag-Along, Drag-Along, and Articles of Association entrenchment (*V.B. Rangaraj*).
+- **Indian IT Employment & Service Bond**: 24-month non-compete (void under Sec 27 ICA 1872 per *Percept D'Mark v. Zaheer Khan*), ₹5,00,000 training bond penalty (Sec 74 ICA), and criminal breach of trust clauses.
+- **RERA Real Estate Allotment Agreement**: Section 2(k) carpet area pricing, 70% escrow compliance, SBI MCLR + 2% delayed possession interest, and 5-year structural defect warranty under Section 14(3) RERA 2016.
+- **Indian Patent Specification (2024 Amendment Rules)**: Hardware-anchored identity claims overcoming Section 3(k) computer programme per se bars per *Ferid Allani v. Union of India*, and Form 27 trademark assignment schedules.
+- **Indian Testamentary Will & Estate Disposition**: Coparcenary ancestral property vs self-acquired estate under Hindu Succession Act (*Vineeta Sharma v. Rakesh Sharma*), Section 63 two-witness attestation protocols, and Section 56(2)(vi) ITA 1961 inheritance taxation.
+- **Indian Shareholders' Agreement (Companies Act 2013)**: ROFR, Tag-Along, Drag-Along, and Articles of Association entrenchment (*V.B. Rangaraj v. State Trading Corp*).
 - **Standard SaaS Terms & Mutual Non-Disclosure Agreements (NDA)**: Unilateral IP assignments, automatic renewals, and standard indemnities.
 
 ---
@@ -101,11 +120,11 @@ Pre-loaded with realistic, production-grade legal instruments across multiple ju
 
 | Dimension | Generic LLMs / Chatbots | Standard Contract SaaS | ClarifyLex AI |
 | :--- | :--- | :--- | :--- |
-| **Statutory Grounding** | Vague, generic summarization; prone to hallucinated doctrines. | Merely searches keywords or flags standard clauses. | **Strictly grounds analysis in governing statutory acts** (ICA 1872, DPDPA 2023, RERA 2016, BNS 2023, Companies Act 2013) and landmark case law. |
-| **Privacy & Security** | Raw text sent directly to third-party cloud APIs. | Requires cloud account and stores unencrypted documents. | **Client-side zero-PII sanitization** masks personal and financial identifiers *before* network transmission. |
-| **Vernacular Accessibility** | English-only or low-quality automated translations. | English-only enterprise focus. | **Trilingual vernacular explanations** in English, Hindi (हिन्दी), and Tamil (தமிழ்). |
-| **Actionable Output** | Walls of conversational text without structure. | Requires expensive legal specialist subscription. | **Automated Lawyer Dossier** with factual timelines, conflicting covenants, and redline clauses ready for retained counsel. |
-| **Zero-Setup Evaluation** | Requires API keys or immediate payment. | Requires corporate email and sales demo booking. | **Instant synthetic library** with precomputed forensic analyses for immediate testing. |
+| **Statutory Grounding** | Vague, generic summarization; prone to hallucinated doctrines. | Merely searches keywords or flags standard clauses. | **Strictly grounds analysis in governing statutory acts** (ICA 1872, IPC 1860, DPDPA 2023, RERA 2016, Companies Act 2013) with landmark bench holdings. |
+| **Privacy & Security** | Raw text sent directly to third-party cloud APIs. | Requires cloud account and stores unencrypted documents. | **Client-side zero-PII sanitization** masks personal and financial identifiers before ingestion; API keys never logged; full **WCAG AA accessibility compliance**. |
+| **Vernacular Accessibility** | English-only or low-quality automated translations. | English-only enterprise focus. | **Trilingual vernacular explanations** in English, Hindi (हिन्दी), and Tamil (தமிழ்) — breaking non-English speaker barriers. |
+| **Actionable Output** | Walls of conversational text without structure. | Requires expensive legal specialist subscription. | **Automated Lawyer Dossier** with factual timelines, conflicting covenants, and high-leverage attorney discovery questions—saves hundreds in legal fees. |
+| **Zero-Setup Evaluation** | Requires API keys or immediate payment. | Requires corporate email and sales demo booking. | **Instant synthetic library** with precomputed forensic analyses for immediate, friction-free zero-latency evaluation. |
 
 ---
 
@@ -113,11 +132,11 @@ Pre-loaded with realistic, production-grade legal instruments across multiple ju
 
 ClarifyLex AI was engineered from the ground up to comply with best practices for AI application design:
 
-- [x] **Server-Side API Security**: Uses an Express + Vite full-stack architecture (`server.ts`). Secret API keys (`GEMINI_API_KEY`, `GROQ_API_KEY`) are kept exclusively on the server and are never exposed to the client browser.
+- [x] **Server-Side API Security**: Uses an Express + Vite full-stack architecture (`server.ts`). Secret API keys (`GEMINI_API_KEY`, `GROQ_API_KEY`) are kept exclusively on the server and are never exposed to the client.
 - [x] **Modern Google GenAI SDK**: Implements the official `@google/genai` TypeScript SDK with structured JSON schemas (`responseSchema`) for deterministic, type-safe AI outputs.
-- [x] **Zero Mock Fallback Failure**: Includes built-in precomputed fallback datasets across all 6 synthetic document categories, ensuring the app remains 100% interactive and demonstrable even without network connectivity or API quotas.
-- [x] **Mandatory Ethical Disclaimers**: Features a persistent banner and a first-use interactive consent modal clearly stating that ClarifyLex AI is an educational tool, not formal legal counsel, and does not establish an attorney-client relationship.
-- [x] **Anti-Slop Clean Design**: Built with clean, accessible styling following strict typographic hierarchies, contrast ratios (WCAG AA), mathematical container paddings, and smooth transition animations (`motion`).
+- [x] **Zero Mock Fallback Failure**: Includes built-in precomputed fallback datasets across all 6 synthetic document categories, ensuring the app remains 100% interactive and demonstrable even without a live API key.
+- [x] **Mandatory Ethical Disclaimers**: Features a persistent banner and a first-use interactive consent modal clearly stating that ClarifyLex AI is an educational tool, not formal legal counsel, and that no attorney-client relationship is created.
+- [x] **Anti-Slop Clean Design**: Built with clean, accessible styling following strict typographic hierarchies, contrast ratios (WCAG AA), mathematical container paddings, and smooth transition animations.
 - [x] **Responsive & Accessible**: Fully optimized for desktop, tablet, and mobile viewing with accessible button targets (>= 44px) and keyboard navigable workflows.
 
 ---
@@ -233,9 +252,9 @@ vercel
 
 ## ⚖️ Ethical & Legal Disclaimer
 
-> **IMPORTANT NOTICE**: ClarifyLex AI is an AI-powered educational and document comprehension tool. It is designed to assist users in understanding complex contractual terminology, identifying potential ambiguities, and preparing for informed discussions with qualified legal professionals.
+> **IMPORTANT NOTICE**: ClarifyLex AI is an AI-powered educational and document comprehension tool. It is designed to assist users in understanding complex contractual terminology, identifying potential risk vectors, and preparing discovery materials for attorney consultation. **It is not a substitute for formal legal representation.**
 > 
-> **ClarifyLex AI does NOT provide formal legal advice, legal representation, or statutory opinions, and its outputs do NOT create an attorney-client relationship.** Legal agreements involve nuanced jurisdiction-specific rules and facts. Always consult a licensed advocate or attorney in your jurisdiction before executing binding legal agreements or waiving legal rights.
+> **ClarifyLex AI does NOT provide formal legal advice, legal representation, or statutory opinions, and its outputs do NOT create an attorney-client relationship.** Legal agreements involve nuanced jurisdictional, tax, regulatory, and factual variables that only a licensed, qualified attorney licensed in your state or jurisdiction can evaluate. Users are **strongly urged to retain independent counsel** before executing any legally binding document. All users must affirmatively accept this disclaimer before proceeding.
 
 ---
 
