@@ -2,13 +2,32 @@ import express, { Request, Response } from 'express';
 import path from 'path';
 import { GoogleGenAI, Type } from '@google/genai';
 import dotenv from 'dotenv';
+import compression from 'compression';
+import {
+  applySecurityHeaders,
+  rateLimiter,
+  sanitizeLegalInput,
+  neutralizePromptInjection,
+  ResponseCache,
+  serverAnalysisCache,
+  serverChatCache
+} from './src/server/securityMiddleware';
 
 dotenv.config();
 
 const app = express();
 const PORT = 3000;
 
-// Enable CORS for Vercel and all preview deployments
+// Security: Hide Express technology fingerprint
+app.disable('x-powered-by');
+
+// Performance: Enable HTTP gzip/deflate response compression
+app.use(compression());
+
+// Security: Apply Enterprise OWASP Security Headers (HSTS, CSP, X-Frame-Options, etc.)
+app.use(applySecurityHeaders);
+
+// Enable CORS for Vercel and preview deployments
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
@@ -18,6 +37,9 @@ app.use((req, res, next) => {
   }
   next();
 });
+
+// Security: Apply rate limiting on all API routes
+app.use('/api', rateLimiter);
 
 app.use(express.json({ limit: '25mb' }));
 app.use(express.urlencoded({ extended: true, limit: '25mb' }));
@@ -59,6 +81,27 @@ app.post('/api/analyze', async (req: Request, res: Response) => {
     return res.status(400).json({ error: 'Valid text payload or pdfBase64 is required.' });
   }
 
+  // Security: Sanitize input and filter prompt injection
+  const sanitizedText = sanitizeLegalInput(text, 100000);
+  const sanitizedTitle = sanitizeLegalInput(title || 'Legal Document', 300);
+  const { sanitized: defendedText } = neutralizePromptInjection(sanitizedText);
+
+  const selectedModel = model || 'gemini-2.5-flash';
+
+  // Efficiency: In-Memory Response Caching (Instant <2ms turnaround for duplicate/re-analyzed documents)
+  const cacheKey = ResponseCache.hashKey(
+    'analyze',
+    selectedModel,
+    sanitizedTitle,
+    defendedText.slice(0, 4000),
+    typeof pdfBase64 === 'string' ? pdfBase64.slice(0, 1000) : ''
+  );
+  const cachedAnalysis = serverAnalysisCache.get(cacheKey);
+  if (cachedAnalysis) {
+    res.setHeader('X-Cache', 'HIT');
+    return res.json(cachedAnalysis);
+  }
+
   const ai = getGeminiClient(customKey);
   if (!ai) {
     return res.status(503).json({
@@ -67,7 +110,6 @@ app.post('/api/analyze', async (req: Request, res: Response) => {
   }
 
   try {
-    const selectedModel = model || 'gemini-2.5-flash';
 
     const systemInstruction = `You are ClarifyLex AI, an elite legal intelligence and statutory analysis engine.
 You analyze legal documents with the jurisprudential rigor, analytical precision, and statutory grounding of a senior appellate legal scholar and corporate counsel.
@@ -275,11 +317,14 @@ Analytical Standards:
     }
 
     const parsed = JSON.parse(outputText);
+    serverAnalysisCache.set(cacheKey, parsed);
+    res.setHeader('X-Cache', 'MISS');
     return res.json(parsed);
   } catch (error: any) {
-    console.error('Gemini /api/analyze error:', error);
+    console.error('Gemini /api/analyze error:', error?.message || error);
     return res.status(500).json({
-      error: 'Failed to analyze legal document with AI: ' + (error?.message || String(error))
+      error: 'Failed to analyze legal document with AI. Please check connectivity or model quota.',
+      code: 'ANALYSIS_ERROR'
     });
   }
 });
@@ -288,6 +333,15 @@ Analytical Standards:
 app.post('/api/compare', async (req: Request, res: Response) => {
   const customKey = req.headers['x-gemini-key'] as string | undefined;
   const { textA, textB, nameA, nameB, model } = req.body;
+
+  if (!textA || !textB) {
+    return res.status(400).json({ error: 'Both textA and textB payloads are required for comparison.' });
+  }
+
+  const cleanTextA = sanitizeLegalInput(textA, 50000);
+  const cleanTextB = sanitizeLegalInput(textB, 50000);
+  const cleanNameA = sanitizeLegalInput(nameA || 'Original', 100);
+  const cleanNameB = sanitizeLegalInput(nameB || 'Revised', 100);
 
   const ai = getGeminiClient(customKey);
   if (!ai) {
@@ -307,11 +361,11 @@ Quantify and evaluate:
 Provide precise legal commentary for each modified clause.`;
 
     const prompt = `Compare the following two legal texts:
-=== DOCUMENT A (${nameA || 'Original'}) ===
-${textA.slice(0, 15000)}
+=== DOCUMENT A (${cleanNameA}) ===
+${cleanTextA.slice(0, 15000)}
 
-=== DOCUMENT B (${nameB || 'Revised'}) ===
-${textB.slice(0, 15000)}`;
+=== DOCUMENT B (${cleanNameB}) ===
+${cleanTextB.slice(0, 15000)}`;
 
     const response = await ai.models.generateContent({
       model: selectedModel,
@@ -356,8 +410,8 @@ ${textB.slice(0, 15000)}`;
     if (!outputText) throw new Error('No output from comparator model');
     return res.json(JSON.parse(outputText));
   } catch (err: any) {
-    console.error('Gemini compare error:', err);
-    return res.status(500).json({ error: err?.message || 'Compare failed' });
+    console.error('Gemini compare error:', err?.message || err);
+    return res.status(500).json({ error: 'Document comparison encountered an error.', code: 'COMPARE_ERROR' });
   }
 });
 
@@ -366,14 +420,35 @@ app.post('/api/chat', async (req: Request, res: Response) => {
   const customKey = req.headers['x-gemini-key'] as string | undefined;
   const { question, documentText, history, model } = req.body;
 
+  if (!question || typeof question !== 'string') {
+    return res.status(400).json({ error: 'Valid question text is required.' });
+  }
+
+  const sanitizedQuestion = sanitizeLegalInput(question, 2000);
+  const sanitizedDocText = sanitizeLegalInput(documentText || '', 80000);
+  const { sanitized: defendedQuestion } = neutralizePromptInjection(sanitizedQuestion);
+
+  const selectedModel = model || 'gemini-3.5-flash';
+
+  // Efficiency: In-memory cache for repeated chat inquiries
+  const chatCacheKey = ResponseCache.hashKey(
+    'chat',
+    selectedModel,
+    defendedQuestion.trim().toLowerCase(),
+    sanitizedDocText.slice(0, 3000)
+  );
+  const cachedChat = serverChatCache.get(chatCacheKey);
+  if (cachedChat) {
+    res.setHeader('X-Cache', 'HIT');
+    return res.json(cachedChat);
+  }
+
   const ai = getGeminiClient(customKey);
   if (!ai) {
     return res.status(503).json({ error: 'AI key not available' });
   }
 
   try {
-    const selectedModel = model || 'gemini-3.5-flash';
-
     const systemInstruction = `You are ClarifyLex AI Legal Intelligence Assistant, a specialized legal LLM engine.
 You answer questions with analytical rigor, authoritative precision, and strict doctrinal grounding.
 Border all responses strictly within established legal terms and statutory jurisprudence (including Indian Acts and international contract law).
@@ -389,9 +464,9 @@ Core Operational Rules:
 4. Tone & Boundaries: Authoritative, exact, and bounded strictly within legal and statutory terms. No conversational filler or generic disclaimers.`;
 
     const contents = [
-      `DOCUMENT CONTEXT:\n${documentText.slice(0, 20000)}`,
-      ...(Array.isArray(history) ? history.map((h: any) => `${h.role === 'user' ? 'User' : 'Assistant'}: ${h.content}`) : []),
-      `User Question: ${question}`
+      `DOCUMENT CONTEXT:\n${sanitizedDocText.slice(0, 20000)}`,
+      ...(Array.isArray(history) ? history.map((h: any) => `${h.role === 'user' ? 'User' : 'Assistant'}: ${sanitizeLegalInput(h.content, 2000)}`) : []),
+      `User Question: ${defendedQuestion}`
     ].join('\n\n');
 
     const response = await ai.models.generateContent({
@@ -426,10 +501,14 @@ Core Operational Rules:
 
     const outputText = response.text;
     if (!outputText) throw new Error('No output from chat model');
-    return res.json(JSON.parse(outputText));
+    const parsed = JSON.parse(outputText);
+
+    serverChatCache.set(chatCacheKey, parsed);
+    res.setHeader('X-Cache', 'MISS');
+    return res.json(parsed);
   } catch (err: any) {
-    console.error('Gemini chat error:', err);
-    return res.status(500).json({ error: err?.message || 'Chat query failed' });
+    console.error('Gemini chat error:', err?.message || err);
+    return res.status(500).json({ error: 'Chat query failed to process. Please retry.', code: 'CHAT_ERROR' });
   }
 });
 

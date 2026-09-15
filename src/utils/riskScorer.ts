@@ -21,6 +21,7 @@ const CONTRACT_RISK_PATTERNS = [
 ];
 
 const PATENT_RISK_PATTERNS = [
+  { regex: /section 3\(k\)|computer programme per se|algorithm per se/i, category: 'patent_sec3k', weight: 35, flag: 'Section 3(k) Patents Act 1970 Bar: Software inventions must demonstrate a technical effect / industrial hardware interface' },
   { regex: /means for|means including|step for/i, category: 'means_plus', weight: 26, flag: '35 U.S.C. 112(f) Means-Plus-Function vulnerability: Claims limited to exact specification structures' },
   { regex: /substantially|approximately|about|or the like|essentially/i, category: 'indefiniteness', weight: 22, flag: 'Vague qualifying terminology prone to indefiniteness rejection' },
   { regex: /rights in inventions made with federal assistance|bayh-dole|government license|march-in rights/i, category: 'bayh_dole', weight: 30, flag: 'Federal funding march-in rights and non-exclusive government royalty-free license' },
@@ -30,7 +31,7 @@ const PATENT_RISK_PATTERNS = [
 ];
 
 const WILL_RISK_PATTERNS = [
-  { regex: /in terrorem|no-contest|contests this will|forfeits? (?:all )?(?:bequest|share)/i, category: 'in_terrorem', weight: 35, flag: 'In Terrorem / No-Contest Penalty: Forfeits beneficiary share if validity is questioned' },
+  { regex: /in terrorem|no-contest|contests this will|forfeits? (?:all )?(?:bequest|share)/i, category: 'in_terrorem', weight: 55, flag: 'In Terrorem / No-Contest Penalty: Forfeits beneficiary share if validity is questioned' },
   { regex: /without bond|without any bond|no bond.*required|waive.*bond/i, category: 'bond_waiver', weight: 22, flag: 'Unbonded fiduciary administration eliminating financial surety protections' },
   { regex: /sole and absolute discretion|without court approval|without confirmation of any court/i, category: 'fiduciary_discretion', weight: 26, flag: 'Unchecked fiduciary powers allowing property liquidation without probate court oversight' },
   { regex: /intentionally omit|make no provision for|disinherit/i, category: 'omission', weight: 28, flag: 'Explicit disinheritance or potential pretermitted heir litigation risk' },
@@ -39,7 +40,7 @@ const WILL_RISK_PATTERNS = [
 ];
 
 const INCORPORATION_RISK_PATTERNS = [
-  { regex: /blank[- ]check preferred|authority to issue.*series|designate preferences/i, category: 'blank_check', weight: 32, flag: 'Blank-Check Preferred Stock: Board can issue senior shares with superior liquidation preferences' },
+  { regex: /blank[- ]check preferred|authority to issue.*series|designate preferences/i, category: 'blank_check', weight: 55, flag: 'Blank-Check Preferred Stock: Board can issue senior shares with superior liquidation preferences' },
   { regex: /drag[- ]along|forced to sell|compelled to transfer|compulsory drag/i, category: 'drag_along', weight: 28, flag: 'Drag-Along forced sale clause allowing majority to liquidate founder equity' },
   { regex: /50% and 50%|equal voting|deadlock|impasse/i, category: 'deadlock', weight: 30, flag: 'Deadlock vulnerability without explicit buy-sell shotgun or tiebreaker mechanism' },
   { regex: /exculpat(?:e|ion)|eliminate personal liability|not liable for breach of fiduciary/i, category: 'exculpation', weight: 24, flag: 'Extensive DGCL § 102(b)(7) exculpation shielding directors from monetary damages' },
@@ -48,7 +49,7 @@ const INCORPORATION_RISK_PATTERNS = [
 ];
 
 const INDIAN_LAW_RISK_PATTERNS = [
-  { regex: /non[- ]compete|restraint of trade|shall not directly or indirectly engage in any competing/i, category: 'sec27_restraint', weight: 35, flag: 'Section 27 ICA 1872 Voidness Alert: Post-termination non-compete is VOID ab initio in India (Percept D\'Mark v. Zaheer Khan)' },
+  { regex: /non[- ]compete|restraint of trade|shall not directly or indirectly engage in any competing/i, category: 'sec27_restraint', weight: 55, flag: 'Section 27 ICA 1872 Voidness Alert: Post-termination non-compete is VOID ab initio in India (Percept D\'Mark v. Zaheer Khan)' },
   { regex: /dpdpa|data fiduciary|data principal|data protection board|250 crore/i, category: 'dpdpa_exposure', weight: 30, flag: 'DPDPA 2023 Statutory Exposure: Non-compliance with Data Fiduciary safeguards risks up to ₹250 Crores penalty' },
   { regex: /super built-up|carpet area.*tentative|delayed possession.*without interest|no compensation for delay/i, category: 'rera_violation', weight: 32, flag: 'RERA 2016 Violation: Dilution of statutory carpet area or denial of Section 18 SBI MCLR + 2% delay interest' },
   { regex: /service bond|bond amount|liquidated damages of rs\.|liquidated damages of inr/i, category: 'sec74_penalty', weight: 26, flag: 'Section 74 ICA Penalty Hurdle: Liquidated damages/bonds cannot be enforced without proof of actual pecuniary loss' },
